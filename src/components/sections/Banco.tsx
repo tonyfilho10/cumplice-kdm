@@ -5,8 +5,10 @@ import { createClient } from '@/lib/supabase/client'
 import type { BancoLancamento } from '@/lib/supabase/types'
 import {
   Badge, Btn, Card, CardTitle, ConfirmDelete, Input, Modal,
-  RowActions, Select, Table, Td, Toast, Tr, UploadZone, brl,
+  RowActions, Select, Table, Td, Toast, Tr, brl,
 } from '@/components/ui'
+import { Button } from '@/components/ui/button'
+import { Upload, Plus, Landmark } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -15,27 +17,70 @@ const hoje = new Date().toISOString().substring(0, 10)
 export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Props) {
   const supabase = createClient()
   const [lancamentos, setLancamentos] = useState<BancoLancamento[]>([])
+  const [contas, setContas] = useState<string[]>([])
   const [toast, setToast] = useState('')
   const [editando, setEditando] = useState<BancoLancamento | null>(null)
   const [excluindo, setExcluindo] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [importando, setImportando] = useState(false)
 
+  // Form manual
   const [data, setData] = useState(hoje)
   const [desc, setDesc] = useState('')
   const [valor, setValor] = useState('')
   const [tipo, setTipo] = useState<'entrada' | 'saida'>('entrada')
   const [categoria, setCategoria] = useState('Venda de Mercadoria')
   const [nfVinc, setNFVinc] = useState('')
-  const [conta, setConta] = useState('Principal')
+  const [conta, setConta] = useState('')
+
+  // Import OFX
+  const [contaImport, setContaImport] = useState('')
+  const [novaContaInput, setNovaContaInput] = useState('')
+  const [adicionandoConta, setAdicionandoConta] = useState(false)
 
   const carregar = useCallback(async () => {
-    const { data: rows } = await supabase.from('banco_lancamentos').select('*')
-      .eq('cliente_id', clienteId).eq('periodo', periodo).order('data', { ascending: false })
+    const { data: rows } = await supabase
+      .from('banco_lancamentos').select('*')
+      .eq('cliente_id', clienteId).eq('periodo', periodo)
+      .order('data', { ascending: false })
     setLancamentos((rows || []) as BancoLancamento[])
+
+    // Carrega todas as contas distintas deste cliente (todos os períodos)
+    const { data: todasContas } = await supabase
+      .from('banco_lancamentos').select('conta')
+      .eq('cliente_id', clienteId)
+      .not('conta', 'is', null)
+
+    const distintas = [...new Set((todasContas || []).map(r => r.conta).filter(Boolean))] as string[]
+
+    // Também inclui banco_principal do cliente
+    const { data: cliente } = await supabase
+      .from('clientes').select('banco_principal').eq('id', clienteId).single()
+
+    if (cliente?.banco_principal && !distintas.includes(cliente.banco_principal)) {
+      distintas.unshift(cliente.banco_principal)
+    }
+
+    setContas(distintas)
+    if (!conta && distintas.length > 0) setConta(distintas[0])
+    if (!contaImport && distintas.length > 0) setContaImport(distintas[0])
   }, [clienteId, periodo])
 
   useEffect(() => { carregar() }, [carregar, refresh])
+
+  function contaSelecionadaImport(): string {
+    if (adicionandoConta) return novaContaInput.trim()
+    return contaImport
+  }
+
+  function adicionarContaLista(nome: string) {
+    if (!nome || contas.includes(nome)) return
+    setContas(prev => [...prev, nome])
+    setContaImport(nome)
+    setConta(nome)
+    setAdicionandoConta(false)
+    setNovaContaInput('')
+  }
 
   async function adicionar() {
     if (!desc || !valor) return
@@ -43,7 +88,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
     const { error } = await supabase.from('banco_lancamentos').insert({
       cliente_id: clienteId, periodo, data, descricao: desc,
       categoria, tipo, valor: parseFloat(valor),
-      nf_vinculada: nfVinc || null, conta,
+      nf_vinculada: nfVinc || null, conta: conta || null,
       status: nfVinc ? 'ok' : (tipo === 'entrada' ? 'pendente' : 'ok'),
     })
     if (error) { setToast(`Erro: ${error.message}`); setSalvando(false); return }
@@ -72,11 +117,21 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 
   async function importarOFX(files: File[]) {
     if (!files[0]) return
+    const contaFinal = contaSelecionadaImport()
+    if (!contaFinal) { setToast('Erro: Selecione ou informe a conta bancária'); return }
+
     setImportando(true)
+
+    // Salva nova conta na lista se for nova
+    if (adicionandoConta && novaContaInput.trim()) {
+      adicionarContaLista(novaContaInput.trim())
+    }
+
     const formData = new FormData()
     formData.append('file', files[0])
     formData.append('periodo', periodo)
-    formData.append('conta', conta)
+    formData.append('conta', contaFinal)
+
     try {
       const res = await fetch(`/api/clientes/${clienteId}/importar-banco`, { method: 'POST', body: formData })
       const result = await res.json()
@@ -85,7 +140,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
       } else if (result.inseridos === 0 && result.aviso) {
         setToast(`Erro: ${result.aviso}`)
       } else {
-        let msg = `${result.inseridos} lançamento(s) importado(s)`
+        let msg = `${result.inseridos} lançamento(s) importado(s) → ${contaFinal}`
         if (result.fora_periodo > 0) msg += ` · ${result.fora_periodo} fora do período`
         setToast(msg)
         await carregar(); onRecarregar()
@@ -97,13 +152,16 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
   const entradas = lancamentos.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
   const saidas   = lancamentos.filter(b => b.tipo === 'saida').reduce((s, b) => s + b.valor, 0)
 
+  // Contas distintas neste período para filtro
+  const contasPeriodo = [...new Set(lancamentos.map(l => l.conta).filter(Boolean))] as string[]
+
   return (
     <div>
       <Card className="mb-4">
         <CardTitle>Lançamento Bancário Manual</CardTitle>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Input label="Data" type="date" value={data} onChange={e => setData(e.target.value)} />
-          <Input label="Descrição / Histórico" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Pix recebido..." className="col-span-2 md:col-span-1" />
+          <Input label="Descrição / Histórico" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Pix recebido..." />
           <Input label="Valor (R$)" type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="0,00" />
           <Select label="Tipo" value={tipo} onChange={e => setTipo(e.target.value as 'entrada' | 'saida')}>
             <option value="entrada">Entrada (Crédito)</option>
@@ -120,36 +178,154 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
             <option>Outro</option>
           </Select>
           <Input label="NF Vinculada (opcional)" value={nfVinc} onChange={e => setNFVinc(e.target.value)} placeholder="Nº da NF" />
-          <Input label="Conta Bancária" value={conta} onChange={e => setConta(e.target.value)} placeholder="Ex: Itaú CC 12345-6" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Conta Bancária
+            </label>
+            {contas.length > 0 ? (
+              <select value={conta} onChange={e => setConta(e.target.value)}
+                className="h-9 rounded-md border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer">
+                <option value="">— Selecione —</option>
+                {contas.map(c => <option key={c}>{c}</option>)}
+              </select>
+            ) : (
+              <Input label="" value={conta} onChange={e => setConta(e.target.value)} placeholder="Ex: Itaú CC 12345-6" />
+            )}
+          </div>
           <div className="flex items-end">
             <Btn onClick={adicionar} disabled={salvando || !desc || !valor} className="w-full justify-center">
               + Adicionar
             </Btn>
           </div>
         </div>
-        <div className="mt-4">
-          <UploadZone icon="🏦" label="Importar Extrato Bancário (OFX / CSV)"
-            sub={importando ? 'Importando...' : 'Exportado do internet banking'}
-            onFiles={importarOFX} accept=".ofx,.csv" />
+      </Card>
+
+      {/* Import OFX — com seleção de conta em destaque */}
+      <Card className="mb-4">
+        <CardTitle>
+          <span className="flex items-center gap-2">
+            <Landmark className="h-4 w-4 text-primary" />
+            Importar Extrato Bancário (OFX / CSV)
+          </span>
+        </CardTitle>
+
+        {/* Seleção de conta — obrigatório antes do upload */}
+        <div className="mb-4 p-3 rounded-lg bg-secondary border border-border">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            1. Selecione a conta bancária do extrato
+          </p>
+
+          {!adicionandoConta ? (
+            <div className="flex gap-2 items-center">
+              <select
+                value={contaImport}
+                onChange={e => setContaImport(e.target.value)}
+                className="flex-1 h-9 rounded-md border border-border bg-card text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                {contas.length === 0 && <option value="">Nenhuma conta cadastrada</option>}
+                {contas.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs shrink-0"
+                onClick={() => setAdicionandoConta(true)}>
+                <Plus className="h-3.5 w-3.5" /> Nova conta
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2 items-center">
+              <input
+                autoFocus
+                value={novaContaInput}
+                onChange={e => setNovaContaInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && adicionarContaLista(novaContaInput)}
+                placeholder="Ex: Itaú CC 12345-6, Bradesco CC 98765-4..."
+                className="flex-1 h-9 rounded-md border border-primary bg-card text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <Button size="sm" className="text-xs shrink-0"
+                onClick={() => adicionarContaLista(novaContaInput)}
+                disabled={!novaContaInput.trim()}>
+                Salvar
+              </Button>
+              <Button variant="outline" size="sm" className="text-xs shrink-0"
+                onClick={() => { setAdicionandoConta(false); setNovaContaInput('') }}>
+                Cancelar
+              </Button>
+            </div>
+          )}
+
+          {contaSelecionadaImport() && (
+            <p className="text-xs text-primary mt-2 font-medium">
+              ✓ Importação vinculada a: <strong>{contaSelecionadaImport()}</strong>
+            </p>
+          )}
+        </div>
+
+        {/* Drop zone */}
+        <div className="mb-1">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            2. Faça upload do arquivo
+          </p>
+          <label
+            className={`flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-7 cursor-pointer transition-colors
+              ${contaSelecionadaImport()
+                ? 'border-border hover:border-primary hover:bg-primary/5 text-muted-foreground hover:text-primary'
+                : 'border-border/40 text-muted-foreground/40 cursor-not-allowed'}`}
+          >
+            <Upload className="h-6 w-6" />
+            <span className="text-sm font-semibold">
+              {importando ? 'Importando...' : 'Arraste ou clique — OFX, CSV'}
+            </span>
+            <span className="text-xs">Exportado do internet banking</span>
+            <input
+              type="file" className="hidden" accept=".ofx,.csv"
+              disabled={!contaSelecionadaImport() || importando}
+              onChange={e => e.target.files && importarOFX(Array.from(e.target.files))}
+            />
+          </label>
+          {!contaSelecionadaImport() && (
+            <p className="text-xs text-orange-400 mt-2 text-center">
+              ⚠ Selecione ou cadastre uma conta bancária antes de importar
+            </p>
+          )}
         </div>
       </Card>
 
+      {/* Tabela */}
       <Card>
         <CardTitle sub={`Entradas: ${brl(entradas)} · Saídas: ${brl(saidas)}`}>
           Movimentações Bancárias
         </CardTitle>
-        <Table headers={['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor', 'NF Vinc.', 'Status', '']}>
+
+        {/* Filtro por conta */}
+        {contasPeriodo.length > 1 && (
+          <div className="flex gap-2 mb-3 flex-wrap">
+            {contasPeriodo.map(c => (
+              <span key={c} className="text-xs bg-secondary border border-border px-2.5 py-1 rounded-full text-muted-foreground flex items-center gap-1.5">
+                <Landmark className="h-3 w-3" /> {c}
+                <span className="font-semibold text-foreground ml-1">
+                  {lancamentos.filter(l => l.conta === c).length}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <Table headers={['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor', 'Conta', 'NF Vinc.', 'Status', '']}>
           {lancamentos.map(b => (
             <Tr key={b.id}>
               <Td>{b.data}</Td>
               <Td>{b.descricao}</Td>
               <Td>{b.categoria}</Td>
               <Td>
-                <span className={b.tipo === 'entrada' ? 'text-green-400 font-bold' : 'text-red-400 font-bold'}>
+                <span className={b.tipo === 'entrada' ? 'text-green-500 font-bold' : 'text-red-400 font-bold'}>
                   {b.tipo === 'entrada' ? '↑ Entrada' : '↓ Saída'}
                 </span>
               </Td>
               <Td><span className="font-semibold">{brl(b.valor)}</span></Td>
+              <Td>
+                {b.conta
+                  ? <span className="text-xs bg-secondary border border-border px-2 py-0.5 rounded-full text-muted-foreground">{b.conta}</span>
+                  : <span className="text-muted-foreground text-xs">—</span>}
+              </Td>
               <Td mono>{b.nf_vinculada || <span className="text-muted-foreground">—</span>}</Td>
               <Td>
                 <Badge variant={b.status === 'ok' ? 'ok' : b.status === 'parcial' ? 'warn' : b.status === 'sem_nf' ? 'err' : 'pending'}>
@@ -179,7 +355,17 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
               <option>Despesa Operacional</option><option>Imposto/Tributo</option>
               <option>Pró-Labore/Salário</option><option>Outro</option>
             </Select>
-            <Input label="NF Vinculada" value={editando.nf_vinculada || ''} onChange={e => setEditando({ ...editando, nf_vinculada: e.target.value || null })} placeholder="Nº da NF" />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Conta Bancária</label>
+              <select value={editando.conta || ''} onChange={e => setEditando({ ...editando, conta: e.target.value || null })}
+                className="h-9 rounded-md border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer">
+                <option value="">— Nenhuma —</option>
+                {contas.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <Input label="NF Vinculada" value={editando.nf_vinculada || ''} onChange={e => setEditando({ ...editando, nf_vinculada: e.target.value || null })} placeholder="Nº da NF" />
+            </div>
           </div>
           <div className="flex justify-end gap-2 mt-5">
             <Btn variant="ghost" onClick={() => setEditando(null)}>Cancelar</Btn>
@@ -188,10 +374,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         </Modal>
       )}
 
-      {excluindo && (
-        <ConfirmDelete onConfirm={confirmarExclusao} onCancel={() => setExcluindo(null)} />
-      )}
-
+      {excluindo && <ConfirmDelete onConfirm={confirmarExclusao} onCancel={() => setExcluindo(null)} />}
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
   )
