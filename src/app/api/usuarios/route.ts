@@ -2,34 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
-// Verifica se o usuário autenticado é um contador válido
 async function getAuthUser() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   return user
 }
 
-// GET /api/usuarios — lista todos os usuários vinculados aos clientes do usuário logado
+// GET /api/usuarios
 export async function GET() {
   const authUser = await getAuthUser()
   if (!authUser) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  // Busca clientes do usuário logado
   const vinculos = await prisma.usuarioCliente.findMany({
     where: { usuario_id: authUser.id },
     select: { cliente_id: true },
   })
   const clienteIds = vinculos.map(v => v.cliente_id)
 
-  // Busca todos os usuarios_clientes desses clientes
   const uc = await prisma.usuarioCliente.findMany({
     where: { cliente_id: { in: clienteIds } },
   })
 
-  // IDs únicos de usuários
   const usuarioIds = [...new Set(uc.map(u => u.usuario_id))]
 
-  // Busca dados dos usuários em auth.users via SQL
   const usuarios = await prisma.$queryRaw<{
     id: string; email: string; created_at: Date; last_sign_in_at: Date | null
   }[]>`
@@ -39,58 +34,49 @@ export async function GET() {
     ORDER BY email
   `
 
-  // Combina com vínculos
-  const resultado = usuarios.map(u => ({
-    ...u,
-    vinculos: uc.filter(v => v.usuario_id === u.id),
-  }))
-
-  return NextResponse.json(resultado)
+  return NextResponse.json(
+    usuarios.map(u => ({ ...u, vinculos: uc.filter(v => v.usuario_id === u.id) }))
+  )
 }
 
-// POST /api/usuarios — cria novo usuário
+// POST /api/usuarios — cria usuário via signUp oficial + confirma + vincula
 export async function POST(request: NextRequest) {
   const authUser = await getAuthUser()
   if (!authUser) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
   const { email, senha, cliente_ids, papel } = await request.json()
 
-  if (!email || !senha) {
-    return NextResponse.json({ erro: 'E-mail e senha são obrigatórios' }, { status: 400 })
-  }
+  if (!email || !senha) return NextResponse.json({ erro: 'E-mail e senha são obrigatórios' }, { status: 400 })
+  if (!cliente_ids?.length) return NextResponse.json({ erro: 'Selecione ao menos um cliente' }, { status: 400 })
 
-  // Verifica se e-mail já existe
+  // Verifica se já existe
   const existente = await prisma.$queryRaw<{ id: string }[]>`
     SELECT id FROM auth.users WHERE email = ${email} LIMIT 1
   `
-  if (existente.length > 0) {
-    return NextResponse.json({ erro: 'E-mail já cadastrado' }, { status: 409 })
+  if (existente.length > 0) return NextResponse.json({ erro: 'E-mail já cadastrado' }, { status: 409 })
+
+  // Cria via signUp — GoTrue cria auth.users + auth.identities corretamente
+  const supabaseAnon = (await import('@supabase/supabase-js')).createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const { data, error } = await supabaseAnon.auth.signUp({ email, password: senha })
+
+  if (error || !data.user) {
+    return NextResponse.json({ erro: error?.message || 'Falha ao criar usuário' }, { status: 500 })
   }
 
-  // Cria usuário direto no banco com senha hasheada pelo Postgres
-  const { randomUUID } = await import('crypto')
-  const userId = randomUUID()
+  const userId = data.user.id
 
+  // Confirma o e-mail automaticamente (sem esperar e-mail de confirmação)
   await prisma.$executeRaw`
-    INSERT INTO auth.users (
-      id, email, encrypted_password, email_confirmed_at,
-      created_at, updated_at, raw_app_meta_data, raw_user_meta_data,
-      is_super_admin, role, aud, instance_id
-    ) VALUES (
-      ${userId}::uuid,
-      ${email},
-      crypt(${senha}, gen_salt('bf')),
-      NOW(), NOW(), NOW(),
-      '{"provider":"email","providers":["email"]}'::jsonb,
-      '{}'::jsonb,
-      false, 'authenticated', 'authenticated',
-      '00000000-0000-0000-0000-000000000000'::uuid
-    )
+    UPDATE auth.users
+    SET email_confirmed_at = COALESCE(email_confirmed_at, NOW()), updated_at = NOW()
+    WHERE id = ${userId}::uuid
   `
 
-  // Vincula aos clientes selecionados
-  const ids: string[] = cliente_ids || []
-  for (const clienteId of ids) {
+  // Vincula aos clientes
+  for (const clienteId of (cliente_ids as string[])) {
     await prisma.usuarioCliente.upsert({
       where: { usuario_id_cliente_id: { usuario_id: userId, cliente_id: clienteId } },
       update: { papel: papel || 'contador' },
