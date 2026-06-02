@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Cliente } from '@/lib/supabase/types'
 import {
-  Btn, Card, CardTitle, ConfirmDelete, Input, Modal, RowActions,
-  Select, Table, Td, Toast, Tr, Badge,
+  Btn, Card, ConfirmDelete, Input, Modal, RowActions,
+  Select, Table, Td, Toast, Tr,
 } from '@/components/ui'
 import { Plus, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -103,6 +103,17 @@ export default function Clientes({ onRecarregar }: Props) {
     setModalAberto(true)
   }
 
+  // Recarrega a lista do banco filtrando pelos clientes do usuário
+  async function recarregarLista() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data: uc } = await supabase.from('usuario_clientes').select('cliente_id').eq('usuario_id', user.id)
+    const ids = (uc || []).map(r => r.cliente_id)
+    if (!ids.length) { setClientes([]); return }
+    const { data } = await supabase.from('clientes').select('*').in('id', ids).order('razao_social')
+    setClientes((data || []) as Cliente[])
+  }
+
   async function salvar() {
     if (!editando.razao_social || !editando.cnpj) {
       setToast('Erro: Razão Social e CNPJ são obrigatórios')
@@ -111,6 +122,12 @@ export default function Clientes({ onRecarregar }: Props) {
     setSalvando(true)
 
     if (modoEdicao && editando.id) {
+      // Atualiza otimistamente antes de fechar o modal
+      setClientes(prev => prev.map(c =>
+        c.id === editando.id ? { ...c, ...editando } as Cliente : c
+      ))
+      setModalAberto(false)
+
       const { error } = await supabase.from('clientes').update({
         razao_social: editando.razao_social,
         cnpj: editando.cnpj,
@@ -123,10 +140,14 @@ export default function Clientes({ onRecarregar }: Props) {
         limite_alerta_imposto: editando.limite_alerta_imposto ?? 5.5,
       }).eq('id', editando.id)
 
-      if (error) { setToast(`Erro: ${error.message}`); setSalvando(false); return }
-      setToast('Cliente atualizado!')
+      if (error) {
+        setToast(`Erro: ${error.message}`)
+        await recarregarLista() // reverte se falhou
+      } else {
+        setToast('Empresa atualizada!')
+        onRecarregar()
+      }
     } else {
-      // Cria o cliente
       const { data: novo, error } = await supabase
         .from('clientes')
         .insert({
@@ -146,54 +167,46 @@ export default function Clientes({ onRecarregar }: Props) {
 
       if (error || !novo) { setToast(`Erro: ${error?.message}`); setSalvando(false); return }
 
-      // Vincula ao usuário atual
+      // Adiciona otimistamente na lista
+      setClientes(prev => [...prev, novo as Cliente].sort((a, b) => a.razao_social.localeCompare(b.razao_social)))
+      setModalAberto(false)
+
+      // Vincula ao usuário + thresholds em background
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        await supabase.from('usuario_clientes').insert({
-          usuario_id: user.id,
-          cliente_id: novo.id,
-          papel: 'contador',
-        })
-
-        // Cria thresholds padrão
-        await supabase.from('thresholds').insert({
-          cliente_id: novo.id,
-          divergencia_banco_nf: 500,
-          compra_sem_nf: 200,
-          despesa_sem_doc: 300,
-          sublimite_simples_pct: 80,
-        })
+        await Promise.all([
+          supabase.from('usuario_clientes').insert({ usuario_id: user.id, cliente_id: novo.id, papel: 'contador' }),
+          supabase.from('thresholds').insert({ cliente_id: novo.id, divergencia_banco_nf: 500, compra_sem_nf: 200, despesa_sem_doc: 300, sublimite_simples_pct: 80 }),
+        ])
       }
 
-      setToast('Cliente criado com sucesso!')
+      setToast('Empresa criada com sucesso!')
+      onRecarregar()
     }
 
-    setModalAberto(false)
     setSalvando(false)
-
-    const { data: fresco } = await supabase
-      .from('clientes')
-      .select('*')
-      .order('razao_social')
-
-    setClientes((fresco || []) as Cliente[])
-    onRecarregar()
   }
 
   async function confirmarExclusao() {
     if (!excluindo) return
-    const { error } = await supabase.from('clientes').update({ ativo: false }).eq('id', excluindo)
-    if (error) { setToast(`Erro: ${error.message}`); setExcluindo(null); return }
 
-    const { data: fresco } = await supabase.from('clientes').select('*').order('razao_social')
-    setClientes((fresco || []) as Cliente[])
+    const nomeEmpresa = clientes.find(c => c.id === excluindo)?.razao_social
+
+    // Remove otimistamente da lista imediatamente
+    setClientes(prev => prev.filter(c => c.id !== excluindo))
     setExcluindo(null)
-    onRecarregar()
-    setToast('Empresa desativada!')
-  }
 
-  const ativos   = clientes.filter(c => c.ativo)
-  const inativos = clientes.filter(c => !c.ativo)
+    // Hard delete — exclui o cliente do banco permanentemente
+    const { error } = await supabase.from('clientes').delete().eq('id', excluindo)
+
+    if (error) {
+      setToast(`Erro: ${error.message}`)
+      await recarregarLista() // restaura se falhou
+    } else {
+      setToast(`"${nomeEmpresa}" excluída!`)
+      onRecarregar()
+    }
+  }
 
   return (
     <div>
@@ -202,8 +215,7 @@ export default function Clientes({ onRecarregar }: Props) {
         <div>
           <h2 className="text-base font-semibold text-foreground">Empresas Cadastradas</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {ativos.length} ativa{ativos.length !== 1 ? 's' : ''}
-            {inativos.length > 0 && ` · ${inativos.length} inativa${inativos.length !== 1 ? 's' : ''}`}
+            {clientes.length} empresa{clientes.length !== 1 ? 's' : ''}
           </p>
         </div>
         <Button onClick={abrirNovo} size="sm" className="gap-2 text-xs">
@@ -214,7 +226,7 @@ export default function Clientes({ onRecarregar }: Props) {
 
       {carregando ? (
         <div className="text-center py-16 text-muted-foreground text-sm">Carregando...</div>
-      ) : ativos.length === 0 ? (
+      ) : clientes.length === 0 ? (
         <Card className="py-16">
           <div className="text-center text-muted-foreground">
             <Building2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
@@ -224,8 +236,8 @@ export default function Clientes({ onRecarregar }: Props) {
         </Card>
       ) : (
         <Card>
-          <Table headers={['Empresa', 'CNPJ', 'Regime', 'Responsável', 'Contato', 'Status', '']}>
-            {[...ativos, ...inativos].map(c => (
+          <Table headers={['Empresa', 'CNPJ', 'Regime', 'Responsável', 'Contato', '']}>
+            {clientes.map(c => (
               <Tr key={c.id}>
                 <Td>
                   <div>
@@ -246,11 +258,6 @@ export default function Clientes({ onRecarregar }: Props) {
                     {c.telefone && <p className="text-muted-foreground">{c.telefone}</p>}
                     {!c.email && !c.telefone && <span className="text-muted-foreground">—</span>}
                   </div>
-                </Td>
-                <Td>
-                  <Badge variant={c.ativo ? 'ok' : 'pending'}>
-                    {c.ativo ? '✓ Ativa' : '✗ Inativa'}
-                  </Badge>
                 </Td>
                 <Td>
                   <RowActions
@@ -346,7 +353,7 @@ export default function Clientes({ onRecarregar }: Props) {
 
       {excluindo && (
         <ConfirmDelete
-          msg={`Desativar "${clientes.find(c => c.id === excluindo)?.razao_social}"? Os dados serão preservados mas a empresa ficará inativa.`}
+          msg={`Excluir permanentemente "${clientes.find(c => c.id === excluindo)?.razao_social}"? Todos os dados desta empresa (compras, notas, banco, despesas) serão removidos e não poderão ser recuperados.`}
           onConfirm={confirmarExclusao}
           onCancel={() => setExcluindo(null)}
         />
