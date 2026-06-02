@@ -92,13 +92,7 @@ export default function MonthPicker({ value, onChange, collapsed = false }: Prop
 
           <button
             onClick={() => setAno(a => a + 1)}
-            className={cn(
-              'h-7 w-7 rounded-md flex items-center justify-center transition-colors',
-              ano >= anoHoje + 1
-                ? 'text-muted-foreground/30 cursor-not-allowed'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-            )}
-            disabled={ano >= anoHoje + 1}
+            className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -108,7 +102,6 @@ export default function MonthPicker({ value, onChange, collapsed = false }: Prop
         <div className="grid grid-cols-3 gap-1">
           {MESES.map((m, i) => {
             const isSelecionado = i === mesAtual && ano === anoAtual
-            const isFuturo      = ano > anoHoje || (ano === anoHoje && i > mesHoje)
             const isHoje        = ano === anoHoje && i === mesHoje
 
             return (
@@ -121,11 +114,8 @@ export default function MonthPicker({ value, onChange, collapsed = false }: Prop
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : isHoje
                     ? 'bg-primary/15 text-primary ring-1 ring-primary/30 hover:bg-primary/25'
-                    : isFuturo
-                    ? 'text-muted-foreground/40 cursor-default hover:bg-transparent'
                     : 'text-foreground hover:bg-muted',
                 )}
-                disabled={isFuturo}
               >
                 {m}
               </button>
