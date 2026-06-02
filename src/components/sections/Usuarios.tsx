@@ -160,52 +160,76 @@ export default function Usuarios({ onRecarregar }: Props) {
           </div>
         </Card>
       ) : (
-        <Card>
-          <Table headers={['E-mail', 'Papel', 'Clientes', 'Criado em', 'Último acesso', '']}>
-            {usuarios.map(u => (
-              <Tr key={u.id}>
-                <Td>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{u.email}</span>
-                    {u.id === euId && (
-                      <span className="text-[10px] font-bold bg-primary/15 text-primary px-1.5 py-0.5 rounded">você</span>
+        <div className="space-y-2">
+          {usuarios.map(u => {
+            const papel = u.vinculos[0]?.papel || 'contador'
+            const isVoce = u.id === euId
+            const acessou = u.last_sign_in_at
+
+            return (
+              <div key={u.id}
+                className={`flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors
+                  ${isVoce ? 'border-primary/30 bg-primary/5' : 'border-border bg-card hover:bg-secondary/40'}`}
+              >
+                {/* Avatar inicial */}
+                <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0
+                  ${isVoce ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+                  {u.email[0].toUpperCase()}
+                </div>
+
+                {/* Email + você */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm text-foreground">{u.email}</span>
+                    {isVoce && (
+                      <span className="text-[10px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
+                        você
+                      </span>
                     )}
                   </div>
-                </Td>
-                <Td>
-                  <Badge variant={u.vinculos[0]?.papel === 'dono' ? 'ok' : 'pending'}>
-                    {u.vinculos[0]?.papel || 'contador'}
-                  </Badge>
-                </Td>
-                <Td>
-                  <div className="flex flex-wrap gap-1">
-                    {u.vinculos.map(v => {
-                      const c = clientes.find(cl => cl.id === v.cliente_id)
-                      return c ? (
-                        <span key={v.cliente_id} className="text-[11px] bg-secondary border border-border px-1.5 py-0.5 rounded text-muted-foreground">
-                          {c.razao_social.split(' ')[0]}
-                        </span>
-                      ) : null
-                    })}
-                    {u.vinculos.length === 0 && <span className="text-muted-foreground text-xs">—</span>}
+                  <div className="flex items-center gap-3 mt-0.5">
+                    <span className="text-[11px] text-muted-foreground">
+                      Criado em {formatData(u.created_at)}
+                    </span>
+                    {acessou ? (
+                      <span className="text-[11px] text-green-500">
+                        Último acesso {formatData(u.last_sign_in_at)}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground/60">Nunca acessou</span>
+                    )}
                   </div>
-                </Td>
-                <Td>{formatData(u.created_at)}</Td>
-                <Td>
-                  {u.last_sign_in_at
-                    ? <span className="text-green-400 text-xs">{formatData(u.last_sign_in_at)}</span>
-                    : <span className="text-muted-foreground text-xs">Nunca</span>}
-                </Td>
-                <Td>
-                  <RowActions
-                    onEdit={() => abrirEdicao(u)}
-                    onDelete={() => u.id !== euId && setExcluindo(u.id)}
-                  />
-                </Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
+                </div>
+
+                {/* Papel */}
+                <PapelBadge papel={papel} />
+
+                {/* Acesso */}
+                <span className="text-[11px] text-muted-foreground bg-secondary border border-border px-2 py-1 rounded-lg whitespace-nowrap hidden md:block">
+                  🏢 Todas as empresas
+                </span>
+
+                {/* Ações */}
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={() => abrirEdicao(u)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors">
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                  </button>
+                  {!isVoce && (
+                    <button onClick={() => setExcluindo(u.id)}
+                      className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
 
       {/* Modal criar / editar */}
@@ -278,5 +302,19 @@ export default function Usuarios({ onRecarregar }: Props) {
 
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
+  )
+}
+
+function PapelBadge({ papel }: { papel: string }) {
+  const cfg: Record<string, { label: string; cls: string }> = {
+    admin:    { label: 'Admin',    cls: 'bg-purple-500/15 text-purple-400 border-purple-500/25' },
+    dono:     { label: 'Sócio',    cls: 'bg-amber-500/15  text-amber-400  border-amber-500/25'  },
+    contador: { label: 'Contador', cls: 'bg-blue-500/15   text-blue-400   border-blue-500/25'   },
+  }
+  const c = cfg[papel] ?? cfg.contador
+  return (
+    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border whitespace-nowrap ${c.cls}`}>
+      {c.label}
+    </span>
   )
 }
