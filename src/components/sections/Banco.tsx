@@ -148,11 +148,29 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
     setImportando(false)
   }
 
-  const entradas = lancamentos.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
-  const saidas   = lancamentos.filter(b => b.tipo === 'saida').reduce((s, b) => s + b.valor, 0)
+  // ── Filtro e consolidado ──────────────────────────────────────────────────
+  const [contaFiltro, setContaFiltro] = useState<string | null>(null)
 
-  // Contas distintas neste período para filtro
   const contasPeriodo = [...new Set(lancamentos.map(l => l.conta).filter(Boolean))] as string[]
+
+  const visiveis = contaFiltro
+    ? lancamentos.filter(l => l.conta === contaFiltro)
+    : lancamentos
+
+  // Consolidado por banco
+  const consolidado = contasPeriodo.map(conta => {
+    const items = lancamentos.filter(l => l.conta === conta)
+    return {
+      conta,
+      entradas: items.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0),
+      saidas:   items.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0),
+      total:    items.length,
+    }
+  })
+
+  const entradas = visiveis.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
+  const saidas   = visiveis.filter(b => b.tipo === 'saida').reduce((s, b) => s + b.valor, 0)
+  const saldo    = entradas - saidas
 
   return (
     <div>
@@ -291,28 +309,78 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         </div>
       </Card>
 
+      {/* Consolidado por banco */}
+      {consolidado.length > 0 && (
+        <div className="mb-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(consolidado.length + 1, 4)}, 1fr)` }}>
+          {/* Card "Todos" */}
+          <button
+            onClick={() => setContaFiltro(null)}
+            className={`rounded-xl border p-4 text-left transition-all ${
+              contaFiltro === null
+                ? 'border-primary bg-primary/10 ring-1 ring-primary'
+                : 'border-border bg-card hover:bg-secondary'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <Landmark className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Todas as contas</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              <span className="text-green-500 font-semibold">↑ {brl(lancamentos.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+l.valor,0))}</span>
+              <span className="text-red-400 font-semibold">↓ {brl(lancamentos.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0))}</span>
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">{lancamentos.length} lançamentos</div>
+          </button>
+
+          {/* Card por banco */}
+          {consolidado.map(c => (
+            <button
+              key={c.conta}
+              onClick={() => setContaFiltro(contaFiltro === c.conta ? null : c.conta)}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                contaFiltro === c.conta
+                  ? 'border-primary bg-primary/10 ring-1 ring-primary'
+                  : 'border-border bg-card hover:bg-secondary'
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Landmark className="h-4 w-4 text-primary" />
+                <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground truncate">{c.conta}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1 text-xs">
+                <span className="text-green-500 font-semibold">↑ {brl(c.entradas)}</span>
+                <span className="text-red-400 font-semibold">↓ {brl(c.saidas)}</span>
+              </div>
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-xs text-muted-foreground">{c.total} lançamentos</span>
+                <span className={`text-xs font-bold ${(c.entradas - c.saidas) >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                  = {brl(c.entradas - c.saidas)}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tabela */}
       <Card>
-        <CardTitle sub={`Entradas: ${brl(entradas)} · Saídas: ${brl(saidas)}`}>
-          Movimentações Bancárias
+        <CardTitle sub={
+          <span className="flex items-center gap-3">
+            <span className="text-green-500">↑ {brl(entradas)}</span>
+            <span className="text-red-400">↓ {brl(saidas)}</span>
+            <span className={`font-bold ${saldo >= 0 ? 'text-green-500' : 'text-red-400'}`}>= {brl(saldo)}</span>
+            {contaFiltro && (
+              <button onClick={() => setContaFiltro(null)} className="text-xs text-primary hover:underline ml-1">
+                × limpar filtro
+              </button>
+            )}
+          </span>
+        }>
+          {contaFiltro ? `Movimentações — ${contaFiltro}` : 'Movimentações Bancárias'}
         </CardTitle>
 
-        {/* Filtro por conta */}
-        {contasPeriodo.length > 1 && (
-          <div className="flex gap-2 mb-3 flex-wrap">
-            {contasPeriodo.map(c => (
-              <span key={c} className="text-xs bg-secondary border border-border px-2.5 py-1 rounded-full text-muted-foreground flex items-center gap-1.5">
-                <Landmark className="h-3 w-3" /> {c}
-                <span className="font-semibold text-foreground ml-1">
-                  {lancamentos.filter(l => l.conta === c).length}
-                </span>
-              </span>
-            ))}
-          </div>
-        )}
-
         <Table headers={['Data', 'Descrição', 'Categoria', 'Tipo', 'Valor', 'Conta', 'NF Vinc.', 'Status', '']}>
-          {lancamentos.map(b => (
+          {visiveis.map(b => (
             <Tr key={b.id}>
               <Td>{fmtData(b.data)}</Td>
               <Td>{b.descricao}</Td>
@@ -338,7 +406,11 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
             </Tr>
           ))}
         </Table>
-        {lancamentos.length === 0 && <p className="text-center py-8 text-muted-foreground text-sm">Nenhum lançamento registrado</p>}
+        {visiveis.length === 0 && (
+          <p className="text-center py-8 text-muted-foreground text-sm">
+            {contaFiltro ? `Nenhum lançamento para "${contaFiltro}"` : 'Nenhum lançamento registrado'}
+          </p>
+        )}
       </Card>
 
       {editando && (
