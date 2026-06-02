@@ -85,8 +85,17 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
         avisos.push(`NFS-e ${nfe.numero || 'sem número'} é nota de serviço — registre em Despesas`)
         continue
       }
-      if (nfe.tipo !== 'entrada') {
-        avisos.push(`NF ${nfe.numero} é saída — ignorada`)
+
+      // Detecta se é compra (entrada) mesmo quando tpNF=1 (saída do emitente):
+      // - tpNF=0 = NF de entrada declarada
+      // - CFOP 1xxx/2xxx = compra/entrada pelo CFOP do item
+      // - Ex: fornecedor emite NF de venda (tpNF=1, CFOP 1101) → do lado do comprador é entrada
+      const ehCompra =
+        nfe.tipo === 'entrada' ||
+        nfe.itens.some(i => i.cfop?.startsWith('1') || i.cfop?.startsWith('2'))
+
+      if (!ehCompra) {
+        avisos.push(`NF ${nfe.numero} (CFOP ${nfe.itens[0]?.cfop}) é saída — ignorada`)
         continue
       }
       if (!nfe.data_emissao) {
@@ -96,7 +105,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
 
       const { error } = await supabase.from('compras').insert({
         cliente_id: clienteId,
-        periodo,
+        periodo: nfe.data_emissao.substring(0, 7), // período real da NF
         data: nfe.data_emissao,
         fornecedor: nfe.razao_emitente || 'Fornecedor XML',
         cnpj_fornecedor: nfe.cnpj_emitente || null,
