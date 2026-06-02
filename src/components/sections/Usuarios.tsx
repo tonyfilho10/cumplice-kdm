@@ -99,15 +99,14 @@ export default function Usuarios({ onRecarregar }: Props) {
     if (!form.email) { setToast('Erro: E-mail é obrigatório'); return }
     if (!modoEdicao && !form.senha) { setToast('Erro: Senha é obrigatória'); return }
     if (!modoEdicao && form.senha !== form.confirmarSenha) { setToast('Erro: Senhas não coincidem'); return }
-    if (form.cliente_ids.length === 0) { setToast('Erro: Selecione ao menos um cliente'); return }
 
     setSalvando(true)
 
     const payload = {
       email: form.email,
       senha: form.senha || undefined,
-      cliente_ids: form.cliente_ids,
       papel: form.papel,
+      // cliente_ids removido: todos os usuários têm acesso a todas as empresas
     }
 
     const res = modoEdicao
@@ -259,30 +258,12 @@ export default function Usuarios({ onRecarregar }: Props) {
               <option value="admin">Admin</option>
             </Select>
 
-            {/* Seleção de clientes */}
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Clientes com acesso *
-              </label>
-              <div className="mt-1.5 space-y-1.5 max-h-40 overflow-y-auto rounded-md border border-border p-2 bg-secondary/50">
-                {clientes.map(c => (
-                  <label key={c.id} className="flex items-center gap-2.5 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={form.cliente_ids.includes(c.id)}
-                      onChange={() => toggleCliente(c.id)}
-                      className="w-3.5 h-3.5 accent-primary"
-                    />
-                    <span className="text-sm text-foreground group-hover:text-primary transition-colors">
-                      {c.razao_social}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-auto">{c.cnpj}</span>
-                  </label>
-                ))}
-                {clientes.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-2">Nenhum cliente disponível</p>
-                )}
-              </div>
+            {/* Acesso global — sem seleção de clientes */}
+            <div className="col-span-2 flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <span className="text-primary text-sm">🏢</span>
+              <p className="text-xs text-muted-foreground">
+                O usuário terá acesso a <strong className="text-foreground">todas as empresas</strong> automaticamente.
+              </p>
             </div>
           </div>
 

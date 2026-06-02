@@ -9,18 +9,10 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  // Busca clientes do usuário
-  const { data: uc } = await supabase
-    .from('usuario_clientes')
-    .select('cliente_id')
-    .eq('usuario_id', user.id)
-
-  const clienteIds = (uc || []).map(r => r.cliente_id)
-
+  // Todos os usuários autenticados têm acesso a todas as empresas ativas
   const { data: clientes } = await supabase
     .from('clientes')
     .select('*')
-    .in('id', clienteIds.length ? clienteIds : ['00000000-0000-0000-0000-000000000000'])
     .eq('ativo', true)
     .order('razao_social')
 

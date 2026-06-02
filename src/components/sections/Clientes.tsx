@@ -177,13 +177,22 @@ export default function Clientes({ onRecarregar, onEntrarCliente }: Props) {
       setClientes(prev => [...prev, novo as Cliente].sort((a, b) => a.razao_social.localeCompare(b.razao_social)))
       setModalAberto(false)
 
-      // Vincula ao usuário + thresholds em background
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await Promise.all([
-          supabase.from('usuario_clientes').insert({ usuario_id: user.id, cliente_id: novo.id, papel: 'contador' }),
-          supabase.from('thresholds').insert({ cliente_id: novo.id, divergencia_banco_nf: 500, compra_sem_nf: 200, despesa_sem_doc: 300, sublimite_simples_pct: 80 }),
-        ])
+      // Cria thresholds + vincula TODOS os usuários à nova empresa
+      await supabase.from('thresholds').insert({
+        cliente_id: novo.id, divergencia_banco_nf: 500,
+        compra_sem_nf: 200, despesa_sem_doc: 300, sublimite_simples_pct: 80,
+      })
+
+      // Busca todos os usuários e vincula à nova empresa
+      const { data: todosUsuarios } = await supabase
+        .from('usuario_clientes')
+        .select('usuario_id')
+      const idsUnicos = [...new Set((todosUsuarios || []).map(u => u.usuario_id))]
+      for (const uid of idsUnicos) {
+        await supabase.from('usuario_clientes').upsert(
+          { usuario_id: uid, cliente_id: novo.id, papel: 'contador' },
+          { onConflict: 'usuario_id,cliente_id' }
+        )
       }
 
       setToast('Empresa criada com sucesso!')

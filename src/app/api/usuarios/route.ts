@@ -44,10 +44,9 @@ export async function POST(request: NextRequest) {
   const authUser = await getAuthUser()
   if (!authUser) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
 
-  const { email, senha, cliente_ids, papel } = await request.json()
+  const { email, senha, papel } = await request.json()
 
   if (!email || !senha) return NextResponse.json({ erro: 'E-mail e senha são obrigatórios' }, { status: 400 })
-  if (!cliente_ids?.length) return NextResponse.json({ erro: 'Selecione ao menos um cliente' }, { status: 400 })
 
   // Verifica se já existe
   const existente = await prisma.$queryRaw<{ id: string }[]>`
@@ -75,8 +74,12 @@ export async function POST(request: NextRequest) {
     WHERE id = ${userId}::uuid
   `
 
-  // Vincula aos clientes
-  for (const clienteId of (cliente_ids as string[])) {
+  // Vincula a TODOS os clientes ativos automaticamente
+  const todosClientes = await prisma.cliente.findMany({
+    where: { ativo: true },
+    select: { id: true },
+  })
+  for (const { id: clienteId } of todosClientes) {
     await prisma.usuarioCliente.upsert({
       where: { usuario_id_cliente_id: { usuario_id: userId, cliente_id: clienteId } },
       update: { papel: papel || 'contador' },
