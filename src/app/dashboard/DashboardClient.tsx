@@ -13,11 +13,12 @@ import Despesas from '@/components/sections/Despesas'
 import Cruzamento from '@/components/sections/Cruzamento'
 import Projecao from '@/components/sections/Projecao'
 import Config from '@/components/sections/Config'
+import Clientes from '@/components/sections/Clientes'
 import { RefreshCw } from 'lucide-react'
 
 export type Section =
   | 'visao-geral' | 'compras' | 'notas' | 'banco'
-  | 'despesas' | 'cruzamento' | 'projecao' | 'config'
+  | 'despesas' | 'cruzamento' | 'projecao' | 'config' | 'clientes'
 
 const SECTION_TITLES: Record<Section, [string, string]> = {
   'visao-geral': ['Visão Geral', 'Painel de alertas e KPIs do mês'],
@@ -28,6 +29,7 @@ const SECTION_TITLES: Record<Section, [string, string]> = {
   'cruzamento':  ['Cruzamento de Dados', 'Divergências identificadas automaticamente'],
   'projecao':    ['Projeção Tributária', 'Estimativa de impostos e recomendações'],
   'config':      ['Perfil do Cliente', 'Configurações e thresholds de alerta'],
+  'clientes':    ['Gerenciar Empresas', 'Criar, editar e desativar clientes'],
 }
 
 // Gera lista de períodos: mês atual + 11 meses anteriores
@@ -129,6 +131,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
           {secao === 'cruzamento'  && <Cruzamento {...sectionProps} />}
           {secao === 'projecao'    && <Projecao {...sectionProps} cliente={clienteAtivo} />}
           {secao === 'config'      && <Config {...sectionProps} cliente={clienteAtivo} onAtualizar={recarregar} />}
+          {secao === 'clientes'    && <Clientes {...sectionProps} />}
         </div>
       </main>
     </div>

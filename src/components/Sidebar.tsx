@@ -13,7 +13,7 @@ import type { Section } from '@/app/dashboard/DashboardClient'
 import { PERIODOS_LISTA } from '@/app/dashboard/DashboardClient'
 import {
   LayoutDashboard, ShoppingCart, FileText, Landmark, CreditCard,
-  ScanSearch, TrendingUp, Settings, LogOut, ChevronLeft, ChevronRight, Menu,
+  ScanSearch, TrendingUp, Settings, LogOut, ChevronLeft, ChevronRight, Menu, Building2,
 } from 'lucide-react'
 
 type Props = {
@@ -51,7 +51,10 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
   },
   {
     section: 'Config',
-    items: [{ id: 'config', icon: Settings, label: 'Perfil do Cliente' }],
+    items: [
+      { id: 'clientes', icon: Building2, label: 'Empresas' },
+      { id: 'config',   icon: Settings,  label: 'Perfil do Cliente' },
+    ],
   },
 ]
 
