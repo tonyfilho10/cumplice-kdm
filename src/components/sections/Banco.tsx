@@ -60,11 +60,25 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
     formData.append('periodo', periodo)
     formData.append('conta', conta)
 
-    const res = await fetch(`/api/clientes/${clienteId}/importar-banco`, { method: 'POST', body: formData })
-    const result = await res.json()
-    await carregar()
-    onRecarregar()
-    setToast(`${result.inseridos || 0} lançamento(s) importado(s)`)
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/importar-banco`, { method: 'POST', body: formData })
+      const result = await res.json()
+
+      if (result.erro) {
+        setToast(`Erro: ${result.erro}`)
+      } else if (result.inseridos === 0 && result.aviso) {
+        setToast(`Erro: ${result.aviso}`)
+      } else {
+        let msg = `${result.inseridos} lançamento(s) importado(s)`
+        if (result.fora_periodo > 0) msg += ` · ${result.fora_periodo} fora do período`
+        if (result.duplicados_ignorados > 0) msg += ` · ${result.duplicados_ignorados} duplicado(s) ignorado(s)`
+        setToast(msg)
+        await carregar()
+        onRecarregar()
+      }
+    } catch (err) {
+      setToast(`Erro: não foi possível processar o arquivo`)
+    }
     setImportando(false)
   }
 
