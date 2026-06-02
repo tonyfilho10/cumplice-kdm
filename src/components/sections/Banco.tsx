@@ -309,56 +309,33 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         </div>
       </Card>
 
-      {/* Consolidado por banco */}
-      {consolidado.length > 0 && (
-        <div className="mb-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(consolidado.length + 1, 4)}, 1fr)` }}>
-          {/* Card "Todos" */}
-          <button
+      {/* Consolidado + filtro por banco */}
+      {lancamentos.length > 0 && (
+        <div className="mb-4 flex flex-wrap gap-3">
+
+          {/* Card "Todas" */}
+          <BancoCard
+            label="Todas as contas"
+            entradas={lancamentos.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+l.valor,0)}
+            saidas={lancamentos.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0)}
+            total={lancamentos.length}
+            ativo={contaFiltro === null}
             onClick={() => setContaFiltro(null)}
-            className={`rounded-xl border p-4 text-left transition-all ${
-              contaFiltro === null
-                ? 'border-primary bg-primary/10 ring-1 ring-primary'
-                : 'border-border bg-card hover:bg-secondary'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <Landmark className="h-4 w-4 text-muted-foreground" />
-              <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Todas as contas</span>
-            </div>
-            <div className="grid grid-cols-2 gap-1 text-xs">
-              <span className="text-green-500 font-semibold">↑ {brl(lancamentos.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+l.valor,0))}</span>
-              <span className="text-red-400 font-semibold">↓ {brl(lancamentos.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0))}</span>
-            </div>
-            <div className="text-xs text-muted-foreground mt-1">{lancamentos.length} lançamentos</div>
-          </button>
+          />
 
           {/* Card por banco */}
           {consolidado.map(c => (
-            <button
+            <BancoCard
               key={c.conta}
+              label={c.conta}
+              entradas={c.entradas}
+              saidas={c.saidas}
+              total={c.total}
+              ativo={contaFiltro === c.conta}
               onClick={() => setContaFiltro(contaFiltro === c.conta ? null : c.conta)}
-              className={`rounded-xl border p-4 text-left transition-all ${
-                contaFiltro === c.conta
-                  ? 'border-primary bg-primary/10 ring-1 ring-primary'
-                  : 'border-border bg-card hover:bg-secondary'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Landmark className="h-4 w-4 text-primary" />
-                <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground truncate">{c.conta}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1 text-xs">
-                <span className="text-green-500 font-semibold">↑ {brl(c.entradas)}</span>
-                <span className="text-red-400 font-semibold">↓ {brl(c.saidas)}</span>
-              </div>
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-xs text-muted-foreground">{c.total} lançamentos</span>
-                <span className={`text-xs font-bold ${(c.entradas - c.saidas) >= 0 ? 'text-green-500' : 'text-red-400'}`}>
-                  = {brl(c.entradas - c.saidas)}
-                </span>
-              </div>
-            </button>
+            />
           ))}
+
         </div>
       )}
 
@@ -451,5 +428,44 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
       {excluindo && <ConfirmDelete onConfirm={confirmarExclusao} onCancel={() => setExcluindo(null)} />}
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
+  )
+}
+
+// ── Subcomponente: card de banco clicável ────────────────────────────────────
+function BancoCard({
+  label, entradas, saidas, total, ativo, onClick,
+}: {
+  label: string | null; entradas: number; saidas: number
+  total: number; ativo: boolean; onClick: () => void
+}) {
+  const saldo = entradas - saidas
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-xl border p-4 text-left transition-all min-w-[180px] flex-1',
+        ativo
+          ? 'border-primary bg-primary/10 ring-1 ring-primary shadow-sm'
+          : 'border-border bg-card hover:bg-secondary hover:border-primary/40',
+      ].join(' ')}
+    >
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <Landmark className={`h-3.5 w-3.5 shrink-0 ${ativo ? 'text-primary' : 'text-muted-foreground'}`} />
+        <span className={`text-xs font-bold uppercase tracking-wide truncate max-w-[140px] ${ativo ? 'text-primary' : 'text-muted-foreground'}`}>
+          {label || 'Sem conta'}
+        </span>
+      </div>
+      <div className="flex gap-3 text-xs mb-1.5">
+        <span className="text-green-500 font-semibold">↑ {brl(entradas)}</span>
+        <span className="text-red-400 font-semibold">↓ {brl(saidas)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">{total} lançamentos</span>
+        <span className={`text-xs font-bold ${saldo >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+          = {brl(saldo)}
+        </span>
+      </div>
+    </button>
   )
 }
