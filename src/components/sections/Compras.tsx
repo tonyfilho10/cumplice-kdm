@@ -90,19 +90,8 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
         avisos.push(`NFS-e ${nfe.numero || 'sem número'} é nota de serviço — registre em Despesas`)
         continue
       }
-
-      // Detecta se é compra (entrada) mesmo quando tpNF=1 (saída do emitente):
-      // - tpNF=0 = NF de entrada declarada
-      // - CFOP 1xxx/2xxx = compra/entrada pelo CFOP do item
-      // - Ex: fornecedor emite NF de venda (tpNF=1, CFOP 1101) → do lado do comprador é entrada
-      const ehCompra =
-        nfe.tipo === 'entrada' ||
-        nfe.itens.some(i => i.cfop?.startsWith('1') || i.cfop?.startsWith('2'))
-
-      if (!ehCompra) {
-        avisos.push(`NF ${nfe.numero} (CFOP ${nfe.itens[0]?.cfop}) é saída — ignorada`)
-        continue
-      }
+      // Qualquer NF-e importada aqui é tratada como compra
+      // (o usuário decide o que importar — não inferimos pelo CFOP ou tpNF)
       if (!nfe.data_emissao) {
         errosInsert.push(`NF ${nfe.numero}: data de emissão inválida`)
         continue
