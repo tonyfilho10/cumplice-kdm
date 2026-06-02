@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Btn, Card, CardTitle, ConfirmDelete, Toast, brl } from '@/components/ui'
 import { Button } from '@/components/ui/button'
 import MonthPicker from '@/components/MonthPicker'
-import { Wrench, Trash2, RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Wrench, Trash2, RefreshCw, AlertTriangle, CheckCircle2, ArrowRight, Landmark } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -80,6 +80,59 @@ export default function Ferramentas({ clienteId, onRecarregar }: Props) {
   const [carregandoContagem, setCarregandoContagem] = useState(false)
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
+
+  // ── Ferramenta 3: Realocar conta ─────────────────────────────────────────
+  const [contasLancamentos, setContasLancamentos] = useState<{ nome: string; total: number }[]>([])
+  const [contaOrigem, setContaOrigem] = useState('')
+  const [contaDestino, setContaDestino] = useState('')
+  const [contaDestinoCustom, setContaDestinoCustom] = useState('')
+  const [realocando, setRealocando] = useState(false)
+  const [confirmandoRealocacao, setConfirmandoRealocacao] = useState(false)
+
+  const carregarContasLancamentos = useCallback(async () => {
+    const { data } = await supabase
+      .from('banco_lancamentos')
+      .select('conta')
+      .eq('cliente_id', clienteId)
+      .not('conta', 'is', null)
+    const distintas = [...new Set((data || []).map(r => r.conta).filter(Boolean))] as string[]
+    // Conta total por conta
+    const com_total = await Promise.all(distintas.map(async nome => {
+      const { count } = await supabase
+        .from('banco_lancamentos')
+        .select('id', { count: 'exact', head: true })
+        .eq('cliente_id', clienteId)
+        .eq('conta', nome)
+      return { nome, total: count || 0 }
+    }))
+    setContasLancamentos(com_total.filter(c => c.total > 0).sort((a, b) => b.total - a.total))
+  }, [clienteId])
+
+  async function executarRealocacao() {
+    const destino = contaDestino === '__custom__' ? contaDestinoCustom.trim() : contaDestino
+    if (!contaOrigem || !destino) return
+    setRealocando(true)
+
+    const { error, count } = await supabase
+      .from('banco_lancamentos')
+      .update({ conta: destino })
+      .eq('cliente_id', clienteId)
+      .eq('conta', contaOrigem)
+
+    setConfirmandoRealocacao(false)
+    if (error) {
+      setToast(`Erro: ${error.message}`)
+    } else {
+      setToast(`✅ ${count || 'Todos os'} lançamentos realocados de "${contaOrigem}" → "${destino}"`)
+      await carregarContasLancamentos()
+      setContaOrigem('')
+      onRecarregar()
+    }
+    setRealocando(false)
+  }
+
+  const totalRealocacao = contasLancamentos.find(c => c.nome === contaOrigem)?.total || 0
+  const destinoFinal = contaDestino === '__custom__' ? contaDestinoCustom.trim() : contaDestino
 
   const carregarContagem = useCallback(async () => {
     setCarregandoContagem(true)
@@ -259,6 +312,103 @@ export default function Ferramentas({ clienteId, onRecarregar }: Props) {
           </div>
         )}
       </Card>
+
+      {/* ── Realocar conta bancária ── */}
+      <Card>
+        <CardTitle>
+          <span className="flex items-center gap-2">
+            <Landmark className="h-4 w-4 text-primary" />
+            Realocar Conta Bancária em Lançamentos
+          </span>
+        </CardTitle>
+        <p className="text-sm text-muted-foreground mb-4">
+          Troca a conta bancária em todos os lançamentos de uma conta para outra.
+          Ex: mover todos os lançamentos de <strong>"Itaú CC 2551"</strong> para <strong>"Caixa Econômica"</strong>.
+        </p>
+
+        {contasLancamentos.length === 0 ? (
+          <Button variant="outline" onClick={carregarContasLancamentos} className="gap-2 text-xs">
+            <Landmark className="h-3.5 w-3.5" />
+            Carregar contas dos lançamentos
+          </Button>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 block">
+                  Conta de origem (atual)
+                </label>
+                <select
+                  value={contaOrigem}
+                  onChange={e => setContaOrigem(e.target.value)}
+                  className="w-full h-9 rounded-md border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">— Selecione a conta —</option>
+                  {contasLancamentos.map(c => (
+                    <option key={c.nome} value={c.nome}>
+                      {c.nome} ({c.total.toLocaleString('pt-BR')} lançamentos)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 block">
+                  Conta de destino (nova)
+                </label>
+                <select
+                  value={contaDestino}
+                  onChange={e => setContaDestino(e.target.value)}
+                  className="w-full h-9 rounded-md border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+                >
+                  <option value="">— Selecione ou crie —</option>
+                  {contasLancamentos.filter(c => c.nome !== contaOrigem).map(c => (
+                    <option key={c.nome} value={c.nome}>{c.nome}</option>
+                  ))}
+                  <option value="__custom__">✏️ Digitar nome diferente...</option>
+                </select>
+                {contaDestino === '__custom__' && (
+                  <input
+                    autoFocus
+                    value={contaDestinoCustom}
+                    onChange={e => setContaDestinoCustom(e.target.value)}
+                    placeholder="Ex: Caixa Econômica Federal"
+                    className="mt-2 w-full h-9 rounded-md border border-primary bg-card text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                )}
+              </div>
+            </div>
+
+            {contaOrigem && destinoFinal && contaOrigem !== destinoFinal && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary border border-border">
+                <span className="text-sm font-semibold text-foreground">"{contaOrigem}"</span>
+                <ArrowRight className="h-4 w-4 text-primary shrink-0" />
+                <span className="text-sm font-semibold text-primary">"{destinoFinal}"</span>
+                <span className="text-xs text-muted-foreground ml-auto">
+                  {totalRealocacao.toLocaleString('pt-BR')} lançamentos serão alterados
+                </span>
+              </div>
+            )}
+
+            <Button
+              onClick={() => setConfirmandoRealocacao(true)}
+              disabled={!contaOrigem || !destinoFinal || contaOrigem === destinoFinal || realocando}
+              className="gap-2"
+            >
+              <ArrowRight className="h-4 w-4" />
+              Realocar {totalRealocacao > 0 ? `${totalRealocacao.toLocaleString('pt-BR')} lançamentos` : ''}
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      {confirmandoRealocacao && (
+        <ConfirmDelete
+          msg={`Alterar ${totalRealocacao.toLocaleString('pt-BR')} lançamentos de "${contaOrigem}" para "${destinoFinal}"?`}
+          onConfirm={executarRealocacao}
+          onCancel={() => setConfirmandoRealocacao(false)}
+        />
+      )}
 
       {confirmandoExclusao && (
         <ConfirmDelete

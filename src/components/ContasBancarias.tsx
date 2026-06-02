@@ -52,7 +52,45 @@ export default function ContasBancarias({ clienteId, onContasChange }: Props) {
       .eq('ativo', true)
       .order('principal', { ascending: false })
       .order('banco')
-    const lista = (data || []) as ContaBancaria[]
+    let lista = (data || []) as ContaBancaria[]
+
+    // Se tabela vazia, migra automaticamente as contas dos lançamentos existentes
+    if (lista.length === 0) {
+      const { data: lancamentos } = await supabase
+        .from('banco_lancamentos')
+        .select('conta')
+        .eq('cliente_id', clienteId)
+        .not('conta', 'is', null)
+
+      const contasDistintas = [...new Set((lancamentos || []).map(l => l.conta).filter(Boolean))] as string[]
+
+      for (const nome of contasDistintas) {
+        // Tenta inferir o banco a partir do nome
+        const bancoDetectado = BANCOS_BR.find(b =>
+          nome.toUpperCase().includes(b.toUpperCase())
+        ) || 'Outro'
+
+        const { data: nova } = await supabase
+          .from('contas_bancarias')
+          .insert({
+            cliente_id: clienteId,
+            nome,
+            banco: bancoDetectado,
+            tipo: nome.toLowerCase().includes('poup') ? 'poupança' : 'corrente',
+            principal: contasDistintas.indexOf(nome) === 0,
+            ativo: true,
+          })
+          .select()
+          .single()
+
+        if (nova) lista.push(nova as ContaBancaria)
+      }
+
+      if (lista.length > 0) {
+        setToast(`${lista.length} conta(s) migrada(s) dos lançamentos existentes`)
+      }
+    }
+
     setContas(lista)
     onContasChange?.(lista)
   }, [clienteId])
