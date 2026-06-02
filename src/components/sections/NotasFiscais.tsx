@@ -41,7 +41,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
     if (!numero || !valor) return
     setSalvando(true)
     const { error } = await supabase.from('notas_fiscais').insert({
-      cliente_id: clienteId, periodo, data, numero,
+      cliente_id: clienteId, periodo: data.substring(0, 7), data, numero,
       cliente_nf: clienteNF || 'Consumidor Final',
       valor: parseFloat(valor), cfop, recebimento,
       data_recebimento: dataRec, conciliada: false,

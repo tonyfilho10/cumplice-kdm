@@ -43,7 +43,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     if (!fornecedor || !valor) return
     setSalvando(true)
     const { error } = await supabase.from('compras').insert({
-      cliente_id: clienteId, periodo, data,
+      cliente_id: clienteId, periodo: data.substring(0, 7), data,
       fornecedor, valor: parseFloat(valor), nf_entrada: nf || null,
       categoria, pagamento, cnpj_fornecedor: cnpjFornecedor || null,
     })

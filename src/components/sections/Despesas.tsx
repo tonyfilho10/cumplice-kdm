@@ -40,7 +40,7 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
     if (!desc || !valor) return
     setSalvando(true)
     const { error } = await supabase.from('despesas').insert({
-      cliente_id: clienteId, periodo, data, descricao: desc,
+      cliente_id: clienteId, periodo: data.substring(0, 7), data, descricao: desc,
       valor: parseFloat(valor), categoria, documento: doc || null,
       pago_banco: pagoBanco, dedutivel,
     })

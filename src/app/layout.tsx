@@ -11,6 +11,10 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
 export const metadata: Metadata = {
   title: 'Sistema Cúmplice',
   description: 'Inteligência contábil para escritórios Prime',
+  icons: {
+    icon: '/favicon.png',
+    apple: '/favicon.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
