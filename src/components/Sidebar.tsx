@@ -18,11 +18,9 @@ import {
 import MonthPicker from '@/components/MonthPicker'
 
 type Props = {
-  clientes: Cliente[]
   clienteAtivo: Cliente | null
   secao: Section
   periodo: string
-  onCliente: (c: Cliente) => void
   onSecao: (s: Section) => void
   onPeriodo: (p: string) => void
 }
@@ -95,8 +93,8 @@ export default function Sidebar(props: Props) {
 }
 
 function SidebarContent({
-  clientes, clienteAtivo, secao, periodo,
-  onCliente, onSecao, onPeriodo, collapsed, setCollapsed,
+  clienteAtivo, secao, periodo,
+  onSecao, onPeriodo, collapsed, setCollapsed,
 }: Props & { collapsed: boolean; setCollapsed: (v: boolean) => void }) {
   const router = useRouter()
   const supabase = createClient()
@@ -122,42 +120,26 @@ function SidebarContent({
         )}
       </div>
 
-      {/* Client selector */}
-      {!collapsed && clientes.length > 0 && (
-        <div className="px-3 pt-3 space-y-2">
-          <select
-            value={clienteAtivo?.id ?? ''}
-            onChange={e => {
-              const c = clientes.find(cl => cl.id === e.target.value)
-              if (c) onCliente(c)
-            }}
-            className="w-full h-8 rounded-md border border-border bg-secondary text-sidebar-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
-          >
-            {clientes.map(c => (
-              <option key={c.id} value={c.id}>{c.razao_social}</option>
-            ))}
-          </select>
-
-          {/* Client card */}
-          {clienteAtivo && (
-            <div className="rounded-xl bg-secondary border border-border p-3 space-y-1.5">
-              <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-900 bg-gradient-to-r from-amber-400 to-amber-600 px-2 py-0.5 rounded-full">
-                ★ Prime
-              </span>
-              <p className="text-[13px] font-semibold text-sidebar-foreground leading-tight">{clienteAtivo.razao_social}</p>
-              <p className="text-[11px] text-muted-foreground">CNPJ: {clienteAtivo.cnpj}</p>
-              <span className="inline-block text-[11px] bg-primary/15 text-primary px-2 py-0.5 rounded-md">
-                {clienteAtivo.regime}
-              </span>
-            </div>
-          )}
+      {/* Client card — nome + regime, sem selector */}
+      {!collapsed && clienteAtivo && (
+        <div className="px-3 pt-3">
+          <div className="rounded-xl bg-secondary border border-border p-3 space-y-1.5">
+            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-widest text-amber-900 bg-gradient-to-r from-amber-400 to-amber-600 px-2 py-0.5 rounded-full">
+              ★ Prime
+            </span>
+            <p className="text-[13px] font-semibold text-sidebar-foreground leading-tight">{clienteAtivo.razao_social}</p>
+            <p className="text-[11px] text-muted-foreground">CNPJ: {clienteAtivo.cnpj}</p>
+            <span className="inline-block text-[11px] bg-primary/15 text-primary px-2 py-0.5 rounded-md">
+              {clienteAtivo.regime}
+            </span>
+          </div>
         </div>
       )}
 
-      {/* Sem cliente — dica de onboarding */}
-      {!collapsed && clientes.length === 0 && (
+      {/* Sem cliente ativo — indicação sutil */}
+      {!collapsed && !clienteAtivo && (
         <div className="mx-3 mt-3 rounded-xl border border-dashed border-border p-3 text-center">
-          <p className="text-[11px] text-muted-foreground">Nenhuma empresa cadastrada</p>
+          <p className="text-[11px] text-muted-foreground">Nenhuma empresa selecionada</p>
         </div>
       )}
 

@@ -88,11 +88,9 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar
-        clientes={clientes}
         clienteAtivo={clienteAtivo}
         secao={secao}
         periodo={periodo}
-        onCliente={setClienteAtivo}
         onSecao={setSecao}
         onPeriodo={setPeriodo}
       />
