@@ -10,6 +10,7 @@ import {
   RowActions, Select, Table, Td, Toast, Tr, UploadZone, brl, fmtData,
 } from '@/components/ui'
 import BuscaLancamentos from '@/components/sections/BuscaLancamentos'
+import { parseNFeXML, parseEventoNFe } from '@/lib/parsers/nfe'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -85,68 +86,123 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
 
   async function importarXML(files: File[]) {
     setImportando(true)
+
+    const importados: string[] = []
+    const erros: { arquivo: string; erro: string; detalhe?: string }[] = []
+    const duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[] = []
+    const cancelamentos: string[] = []
+
     try {
-      const conteudos = await Promise.all(files.map(async f => ({ nome: f.name, conteudo: await f.text() })))
-      let result: Record<string, unknown>
-      const abort = new AbortController()
-      const timeoutId = setTimeout(() => abort.abort(), 55_000) // 55s — antes do limite de 60s do Netlify
-      try {
-        const res = await fetch(`/api/clientes/${clienteId}/importar-nfe`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ files: conteudos, periodo }),
-          signal: abort.signal,
-        })
-        const contentType = res.headers.get('content-type') || ''
-        if (!contentType.includes('application/json')) {
-          // Netlify/servidor retornou erro em texto puro (ex: 413, 500, 502)
-          const texto = await res.text().catch(() => `HTTP ${res.status}`)
-          setToast(
-            res.status === 413 ? 'Arquivos muito grandes — importe no máximo 5 XMLs por vez'
-            : res.status >= 500 ? `Erro no servidor (${res.status}) — tente novamente em instantes`
-            : `Erro inesperado (${res.status}): ${texto.substring(0, 80)}`
-          )
-          return
-        }
-        result = await res.json()
-      } catch (fetchErr) {
-        const isTimeout = fetchErr instanceof Error && fetchErr.name === 'AbortError'
-        setToast(isTimeout
-          ? 'Tempo esgotado (55s) — tente importar menos arquivos por vez'
-          : `Erro de conexão: ${fetchErr instanceof Error ? fetchErr.message : 'Verifique sua internet e tente novamente'}`)
-        return
-      } finally {
-        clearTimeout(timeoutId)
+      // Processa em lotes de 5 para não sobrecarregar o Supabase
+      const LOTE = 5
+      for (let i = 0; i < files.length; i += LOTE) {
+        const lote = files.slice(i, i + LOTE)
+
+        await Promise.all(lote.map(async (file) => {
+          try {
+            const conteudo = await file.text()
+            const nfe = await parseNFeXML(conteudo)
+
+            if (nfe.erro?.startsWith('Arquivo ignorado:')) return
+
+            // Evento (cancelamento, CCe)
+            if (nfe.erro === '__evento__') {
+              const evento = parseEventoNFe(conteudo)
+              if (!evento) { erros.push({ arquivo: file.name, erro: 'Evento não reconhecido' }); return }
+              if (evento.tipo === 'cancelamento' && evento.chave_nfe) {
+                const { data: nfExistente } = await supabase
+                  .from('notas_fiscais').select('id, numero')
+                  .eq('chave_acesso', evento.chave_nfe).eq('cliente_id', clienteId).maybeSingle()
+                if (nfExistente) {
+                  await supabase.from('notas_fiscais').update({ cancelada: true }).eq('id', nfExistente.id)
+                  cancelamentos.push(`NF ${nfExistente.numero} cancelada — ${evento.descricao}`)
+                } else {
+                  cancelamentos.push(`Cancelamento para chave ${evento.chave_nfe.substring(0, 10)}... (NF não encontrada)`)
+                }
+              } else if (evento.tipo === 'carta_correcao') {
+                cancelamentos.push(`Carta de Correção para ${evento.chave_nfe?.substring(0, 10)}... — ${evento.descricao}`)
+              }
+              return
+            }
+
+            if (nfe.erro) { erros.push({ arquivo: file.name, erro: nfe.erro }); return }
+
+            const periodoNF = nfe.data_emissao?.substring(0, 7) || periodo
+            const dadosNF = {
+              cliente_id: clienteId,
+              periodo: periodoNF,
+              data: nfe.data_emissao,
+              numero: nfe.numero,
+              chave_acesso: nfe.chave_acesso || null,
+              cliente_nf: nfe.razao_destinatario || 'Consumidor Final',
+              cfop: nfe.cfop,
+              valor: nfe.valor_total,
+              conciliada: false,
+              cancelada: false,
+            }
+
+            // Dedup por chave de acesso (NF-e)
+            if (nfe.chave_acesso) {
+              const { data: existente } = await supabase
+                .from('notas_fiscais').select('id')
+                .eq('chave_acesso', nfe.chave_acesso).eq('cliente_id', clienteId).maybeSingle()
+              if (existente) {
+                await supabase.from('notas_fiscais').update(dadosNF).eq('id', existente.id)
+                duplicados.push({
+                  arquivo: file.name, numero: nfe.numero ?? '?', motivo: 'Atualizada (já existia)',
+                  detalhe: `NF ${nfe.numero} | ${periodoNF} | R$ ${nfe.valor_total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                })
+                return
+              }
+            } else if (nfe.numero) {
+              // Dedup por número + período (NFS-e)
+              let q = supabase.from('notas_fiscais').select('id, valor')
+                .eq('cliente_id', clienteId).eq('numero', nfe.numero)
+                .eq('periodo', periodoNF).is('chave_acesso', null)
+              if (nfe.razao_destinatario) q = q.eq('cliente_nf', nfe.razao_destinatario)
+              const { data: existente } = await q.maybeSingle()
+              if (existente) {
+                await supabase.from('notas_fiscais').update(dadosNF).eq('id', existente.id)
+                duplicados.push({
+                  arquivo: file.name, numero: nfe.numero, motivo: 'Atualizada (já existia)',
+                  detalhe: `NF ${nfe.numero} | ${periodoNF} | anterior R$ ${Number(existente.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                })
+                return
+              }
+            }
+
+            // Insere nova NF
+            const { error: insertError } = await supabase.from('notas_fiscais').insert({
+              id: crypto.randomUUID(), ...dadosNF,
+            })
+            if (insertError) { erros.push({ arquivo: file.name, erro: insertError.message }); return }
+
+            const label = nfe.formato === 'nfse' ? 'NFS-e' : 'NF-e'
+            const aviso = periodoNF !== periodo ? ` → alocado em ${periodoNF}` : ''
+            importados.push(`${label} ${nfe.numero}${aviso} — R$ ${nfe.valor_total.toLocaleString('pt-BR')}`)
+
+          } catch (fileErr) {
+            erros.push({ arquivo: file.name, erro: fileErr instanceof Error ? fileErr.message : 'Erro inesperado' })
+          }
+        }))
       }
 
       await carregar()
       onRecarregar()
 
-      if (result.erro) {
-        setToast(`Erro: ${result.erro}`)
-      } else {
-        const n = (result.importados as string[] || []).length
-        const d = (result.duplicados as unknown[] || []).length
-        const e = (result.erros as unknown[] || []).length
-        const c = (result.cancelamentos as string[] || []).length
-        const fora = (result.importados as string[] || []).filter(s => s.includes('→ alocado'))
-
-        if (d > 0 || e > 0 || c > 0) {
-          setRelatorio({
-            importados: result.importados as string[] || [],
-            cancelamentos: result.cancelamentos as string[] || [],
-            duplicados: result.duplicados as { arquivo: string; numero: string; motivo: string; detalhe: string }[] || [],
-            erros: result.erros as { arquivo: string; erro: string; detalhe?: string }[] || [],
-          })
-        }
-
-        let msg = `${n} NF(s) importada(s)`
-        if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
-        if (c > 0) msg += ` · ${c} cancelamento(s) processado(s)`
-        if (d > 0) msg += ` · ${d} duplicada(s)`
-        if (e > 0) msg += ` · ${e} erro(s)`
-        setToast(n > 0 || c > 0 ? msg : (d > 0 ? `Todas já importadas (${d} duplicadas)` : `Erro: ${(result.erros as { erro: string }[])?.[0]?.erro || 'Nenhuma NF importada'}`))
+      if (duplicados.length > 0 || erros.length > 0 || cancelamentos.length > 0) {
+        setRelatorio({ importados, cancelamentos, duplicados, erros })
       }
+
+      const n = importados.length, d = duplicados.length, e = erros.length, c = cancelamentos.length
+      const fora = importados.filter(s => s.includes('→ alocado'))
+      let msg = `${n} NF(s) importada(s)`
+      if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
+      if (c > 0) msg += ` · ${c} cancelamento(s)`
+      if (d > 0) msg += ` · ${d} duplicada(s)`
+      if (e > 0) msg += ` · ${e} erro(s)`
+      setToast(n > 0 || c > 0 ? msg : d > 0 ? `Todas já importadas (${d} duplicadas)` : `Erro: ${erros[0]?.erro || 'Nenhuma NF importada'}`)
+
     } finally {
       setImportando(false)
     }
