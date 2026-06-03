@@ -182,10 +182,82 @@ function parseNFSe(result: Record<string, unknown>): NFeParsed {
   }
 }
 
+export type NFeEvento = {
+  tipo: 'cancelamento' | 'carta_correcao' | 'outro'
+  chave_nfe: string        // chave da NF afetada
+  numero_protocolo?: string
+  data_evento?: string
+  justificativa?: string
+  descricao: string
+}
+
+// Tenta parsear um XML de evento (procEventoNFe / procEventoNFCe)
+export function parseEventoNFe(xmlContent: string): NFeEvento | null {
+  try {
+    const result = parser.parse(xmlContent) as Record<string, unknown>
+    const root = (result.procEventoNFe || result.procEventoNFCe) as Record<string, unknown> | undefined
+    if (!root) return null
+
+    const evento = root.evento as Record<string, unknown> | undefined
+    const retEvento = root.retEvento as Record<string, unknown> | undefined
+    const infEvento = (evento?.infEvento || {}) as Record<string, unknown>
+    const infRetEvento = (retEvento as Record<string, unknown>)?.infEvento as Record<string, unknown> | undefined
+
+    const chave = getText(infEvento.chNFe)
+    const tpEvento = getText(infEvento.tpEvento)
+    const dhEvento = getText(infEvento.dhEvento || '').substring(0, 10)
+    const nProt = getText(infRetEvento?.nProt || '')
+
+    // detEvento contém a justificativa (cancelamento) ou a correção
+    const detEvento = (infEvento.detEvento || {}) as Record<string, unknown>
+    const xJust = getText(detEvento.xJust || detEvento.xCorrecao || '')
+
+    // tpEvento: 110111 = Cancelamento NF-e, 110110 = Cancelamento NFC-e, 110112 = CCe
+    const tipo: NFeEvento['tipo'] =
+      tpEvento === '110111' || tpEvento === '110110' ? 'cancelamento'
+      : tpEvento === '110112' ? 'carta_correcao'
+      : 'outro'
+
+    const descricao =
+      tipo === 'cancelamento' ? `Cancelamento — Protocolo ${nProt || '?'}` :
+      tipo === 'carta_correcao' ? `Carta de Correção — Protocolo ${nProt || '?'}` :
+      `Evento ${tpEvento}`
+
+    return { tipo, chave_nfe: chave, numero_protocolo: nProt, data_evento: dhEvento, justificativa: xJust, descricao }
+  } catch {
+    return null
+  }
+}
+
+// XMLs que não são NF emitida e não são eventos — ignorar silenciosamente
+const RAIZES_IGNORAR = new Set(['retInutNFe','inutNFe','retConsStatServ','retConsCad','retEnvLote','consStatServ'])
+
 // ─── Detector automático ──────────────────────────────────────────────────────
 export async function parseNFeXML(xmlContent: string): Promise<NFeParsed> {
   try {
     const result = parser.parse(xmlContent) as Record<string, unknown>
+
+    // Ignora XMLs de consulta/inutilização sem reportar erro
+    for (const key of RAIZES_IGNORAR) {
+      if (result[key] !== undefined) {
+        return {
+          chave_acesso: '', numero: '', serie: '', data_emissao: '',
+          cfop: '', valor_total: 0, cnpj_emitente: '', razao_emitente: '',
+          natureza_operacao: '', tipo: 'saida', formato: 'nfe', itens: [],
+          erro: 'Arquivo ignorado: XML de consulta/inutilização',
+        }
+      }
+    }
+
+    // Eventos (cancelamento, CCe) — sinaliza para o importador tratar separadamente
+    if (result.procEventoNFe !== undefined || result.procEventoNFCe !== undefined) {
+      return {
+        chave_acesso: '', numero: '', serie: '', data_emissao: '',
+        cfop: '', valor_total: 0, cnpj_emitente: '', razao_emitente: '',
+        natureza_operacao: '', tipo: 'saida', formato: 'nfe', itens: [],
+        erro: '__evento__',  // flag especial — o importador vai tratar
+      }
+    }
 
     // Detecta pelo namespace ou elemento raiz
     const isNFSe =

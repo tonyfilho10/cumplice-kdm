@@ -23,6 +23,12 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
   const [excluindo, setExcluindo] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [relatorio, setRelatorio] = useState<{
+    importados: string[]
+    cancelamentos: string[]
+    duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[]
+    erros: { arquivo: string; erro: string; detalhe?: string }[]
+  } | null>(null)
 
   const [data, setData] = useState(hoje)
   const [numero, setNumero] = useState('')
@@ -99,13 +105,25 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
       const n = result.importados?.length || 0
       const d = result.duplicados?.length || 0
       const e = result.erros?.length || 0
+      const fora = (result.importados as string[] || []).filter((s: string) => s.includes('→ alocado'))
+
+      // Se houver duplicatas ou erros, abre relatório detalhado
+      const c = result.cancelamentos?.length || 0
+      if (d > 0 || e > 0 || c > 0) {
+        setRelatorio({
+          importados: result.importados || [],
+          cancelamentos: result.cancelamentos || [],
+          duplicados: result.duplicados || [],
+          erros: result.erros || [],
+        })
+      }
+
       let msg = `${n} NF(s) importada(s)`
-      // Avisa se alguma NF foi alocada em período diferente do atual
-      const fora = (result.importados as string[] || []).filter(s => s.includes('→ alocado'))
       if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
+      if (c > 0) msg += ` · ${c} cancelamento(s) processado(s)`
       if (d > 0) msg += ` · ${d} duplicada(s)`
       if (e > 0) msg += ` · ${e} erro(s)`
-      setToast(n > 0 ? msg : `Erro: ${result.erros?.[0]?.erro || 'Nenhuma NF importada'}`)
+      setToast(n > 0 || c > 0 ? msg : (d > 0 ? `Todas já importadas (${d} duplicadas)` : `Erro: ${result.erros?.[0]?.erro || 'Nenhuma NF importada'}`))
     }
     setImportando(false)
   }
@@ -231,6 +249,85 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
 
       {excluindo && (
         <ConfirmDelete msg="Excluir esta nota fiscal?" onConfirm={confirmarExclusao} onCancel={() => setExcluindo(null)} />
+      )}
+
+      {/* ── Relatório de importação (duplicatas / erros) ────────────────── */}
+      {relatorio && (relatorio.duplicados.length > 0 || relatorio.erros.length > 0) && (
+        <Modal title="Relatório de Importação" onClose={() => setRelatorio(null)}>
+          <div style={{ maxHeight: 480, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {relatorio.importados.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-green-400)', marginBottom: 6 }}>
+                  ✅ {relatorio.importados.length} NF(s) importada(s) com sucesso
+                </p>
+              </div>
+            )}
+
+            {relatorio.cancelamentos.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-blue-400)', marginBottom: 8 }}>
+                  🚫 {relatorio.cancelamentos.length} cancelamento(s) / evento(s) processado(s)
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {relatorio.cancelamentos.map((c, i) => (
+                    <div key={i} style={{
+                      background: 'var(--color-secondary)', borderRadius: 6, padding: '8px 12px',
+                      borderLeft: '3px solid var(--color-blue-400)',
+                      fontSize: 11,
+                    }}>
+                      {c}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {relatorio.duplicados.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-yellow-400)', marginBottom: 8 }}>
+                  ⚠️ {relatorio.duplicados.length} duplicata(s) ignorada(s)
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {relatorio.duplicados.map((d, i) => (
+                    <div key={i} style={{
+                      background: 'var(--color-secondary)', borderRadius: 6, padding: '8px 12px',
+                      borderLeft: '3px solid var(--color-yellow-400)',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>NF {d.numero}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-yellow-400)', marginTop: 2 }}>{d.motivo}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginTop: 2 }}>{d.detalhe}</div>
+                      <div style={{ fontSize: 10, color: 'var(--color-muted-foreground)', marginTop: 2 }}>Arquivo: {d.arquivo}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {relatorio.erros.length > 0 && (
+              <div>
+                <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-red-400)', marginBottom: 8 }}>
+                  ❌ {relatorio.erros.length} erro(s) ao processar
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {relatorio.erros.map((e, i) => (
+                    <div key={i} style={{
+                      background: 'var(--color-secondary)', borderRadius: 6, padding: '8px 12px',
+                      borderLeft: '3px solid var(--color-red-400)',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{e.arquivo}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-red-400)', marginTop: 2 }}>{e.erro}</div>
+                      {e.detalhe && <div style={{ fontSize: 11, color: 'var(--color-muted-foreground)', marginTop: 2 }}>{e.detalhe}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+            <Btn onClick={() => setRelatorio(null)}>Fechar</Btn>
+          </div>
+        </Modal>
       )}
 
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}

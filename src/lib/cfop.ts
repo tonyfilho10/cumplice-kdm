@@ -59,7 +59,7 @@ const CFOP_MAP: Record<string, CFOPInfo> = {
   '6902': { tipo: 'retorno_remessa', descricao: 'Retorno interestadual de industrialização', badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
   '5904': { tipo: 'retorno_remessa', descricao: 'Retorno de remessa p/ venda',              badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
   '5929': { tipo: 'retorno_remessa', descricao: 'Retorno de mercadoria em exposição',       badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
-  '6908': { tipo: 'retorno_remessa', descricao: 'Retorno de mercadoria depositada',         badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '6908': { tipo: 'remessa',         descricao: 'Retorno de mercadoria depositada',         badge: 'Remessa', cor: 'text-yellow-400', impacto: 'neutro' },
   '6923': { tipo: 'retorno_remessa', descricao: 'Retorno de depósito fechado',              badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
 
   // ── Industrialização — é RECEITA de serviço prestado ────────────────────
