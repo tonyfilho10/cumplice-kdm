@@ -43,6 +43,22 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
 
   useEffect(() => { carregar() }, [carregar, refresh])
 
+  // ── Conferência banco × despesas ──────────────────────────────────────
+  const [saidasBanco, setSaidasBanco] = useState<{ descricao: string; valor: number; categoria: string | null; data: string }[]>([])
+  const [mostrarConferencia, setMostrarConferencia] = useState(false)
+
+  async function carregarConferencia() {
+    const { data: rows } = await supabase
+      .from('banco_lancamentos')
+      .select('descricao, valor, categoria, data')
+      .eq('cliente_id', clienteId)
+      .eq('periodo', periodo)
+      .eq('tipo', 'saida')
+      .gt('valor', 0)
+    setSaidasBanco((rows || []) as typeof saidasBanco)
+    setMostrarConferencia(true)
+  }
+
   async function adicionar() {
     if (!desc || !valor) return
     const erroP = await checkPeriodoAberto(clienteId, data)
@@ -110,6 +126,96 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
           </div>
         </div>
       </Card>
+
+      {/* Conferência banco × despesas */}
+      <div className="mb-4 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-foreground">Conferência: Saídas Banco × Despesas</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Despesas: <strong className="text-foreground">{despesas.length}</strong> registros · {brl(total)}
+              {saidasBanco.length > 0 && (
+                <span className="ml-2">
+                  Saídas banco: <strong className="text-foreground">{saidasBanco.length}</strong> · {brl(saidasBanco.reduce((s,l)=>s+l.valor,0))}
+                </span>
+              )}
+            </p>
+          </div>
+          <button onClick={carregarConferencia}
+            className="text-xs text-primary border border-primary/30 bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/15 transition-colors">
+            {mostrarConferencia ? '↻ Atualizar' : '🔍 Conferir'}
+          </button>
+        </div>
+
+        {mostrarConferencia && saidasBanco.length > 0 && (() => {
+          const totalBanco = saidasBanco.reduce((s,l)=>s+l.valor,0)
+          const totalDesp  = total
+          const diff       = totalBanco - totalDesp
+          const despHash   = new Set(despesas.map(d => `${d.data}|${d.valor}|${d.descricao}`))
+          const semDespesa = saidasBanco.filter(l => !despHash.has(`${l.data}|${l.valor}|${l.descricao}`))
+          const semBanco   = despesas.filter(d => !saidasBanco.some(l => l.data === d.data && l.valor === d.valor && l.descricao === d.descricao))
+
+          return (
+            <div className="mt-4 space-y-3">
+              {/* Totais */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-secondary p-3 text-center">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Saídas Banco</p>
+                  <p className="text-lg font-bold text-foreground">{saidasBanco.length}</p>
+                  <p className="text-xs text-red-400">{brl(totalBanco)}</p>
+                </div>
+                <div className="rounded-lg bg-secondary p-3 text-center">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Despesas</p>
+                  <p className="text-lg font-bold text-foreground">{despesas.length}</p>
+                  <p className="text-xs text-orange-400">{brl(totalDesp)}</p>
+                </div>
+                <div className={`rounded-lg p-3 text-center ${Math.abs(diff) < 1 ? 'bg-green-500/10 border border-green-500/20' : 'bg-orange-500/10 border border-orange-500/20'}`}>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wide">Diferença</p>
+                  <p className={`text-lg font-bold ${Math.abs(diff) < 1 ? 'text-green-400' : 'text-orange-400'}`}>{Math.abs(saidasBanco.length - despesas.length)}</p>
+                  <p className={`text-xs ${Math.abs(diff) < 1 ? 'text-green-400' : 'text-orange-400'}`}>{diff > 0 ? '+' : ''}{brl(diff)}</p>
+                </div>
+              </div>
+
+              {/* Saídas sem despesa */}
+              {semDespesa.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-orange-400 mb-2">⚠️ {semDespesa.length} saída(s) do banco sem despesa correspondente:</p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {semDespesa.map((l, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-secondary">
+                        <span className="text-muted-foreground">{l.data}</span>
+                        <span className="flex-1 mx-2 truncate text-foreground">{l.descricao}</span>
+                        <span className="text-xs bg-secondary border border-border px-1.5 py-0.5 rounded text-muted-foreground shrink-0">{l.categoria || '—'}</span>
+                        <span className="text-red-400 font-semibold ml-2 shrink-0">{brl(l.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Despesas sem lançamento banco */}
+              {semBanco.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-blue-400 mb-2">ℹ️ {semBanco.length} despesa(s) sem lançamento bancário (entrada manual ou caixa):</p>
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {semBanco.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-secondary">
+                        <span className="text-muted-foreground">{d.data}</span>
+                        <span className="flex-1 mx-2 truncate text-foreground">{d.descricao}</span>
+                        <span className="text-primary font-semibold ml-2 shrink-0">{brl(d.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {semDespesa.length === 0 && semBanco.length === 0 && (
+                <p className="text-center text-sm text-green-400 py-2">✅ Saídas bancárias e despesas estão alinhadas!</p>
+              )}
+            </div>
+          )
+        })()}
+      </div>
 
       <Card>
         <CardTitle sub={`Total: ${brl(total)}${semDoc > 0 ? ` · ${brl(semDoc)} sem comprovante ⚠` : ''}`}>
