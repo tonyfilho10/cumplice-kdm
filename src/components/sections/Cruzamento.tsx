@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { cruzarDados } from '@/lib/crossref'
 import type { BancoLancamento, Compra, Despesa, NotaFiscal } from '@/lib/supabase/types'
-import { AlertBar, Badge, Btn, Card, CardTitle, KpiCard, Table, Td, Toast, Tr, brl, fmtData, } from '@/components/ui'
+import { AlertBar, Badge, Btn, Card, CardTitle, KpiCard, Modal, Table, Td, Toast, Tr, brl, fmtData } from '@/components/ui'
 import { Button } from '@/components/ui/button'
-import { GitMerge } from 'lucide-react'
+import { GitMerge, MessageSquare, CheckCircle2 } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -16,6 +16,77 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
   const [toast, setToast] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [conciliando, setConciliando] = useState(false)
+
+  // Orientação / comentário
+  type Orientacao = { divergencia: ReturnType<typeof cruzarDados>['divergencias'][0]; texto: string; resolvida: boolean }
+  const [orientando, setOrientando] = useState<Orientacao | null>(null)
+  const [salvandoOrient, setSalvandoOrient] = useState(false)
+  // Orientações já salvas: chave = banco_id ou compra_id ou despesa_id
+  const [orientacoesSalvas, setOrientacoesSalvas] = useState<Record<string, { observacao: string; resolvida: boolean; id: string }>>({})
+
+  async function carregarOrientacoes() {
+    const { data } = await supabase
+      .from('divergencias')
+      .select('id, banco_lancamento_id, compra_id, despesa_id, observacao, resolvida')
+      .eq('cliente_id', clienteId)
+      .eq('periodo', periodo)
+      .not('observacao', 'is', null)
+    const mapa: typeof orientacoesSalvas = {}
+    for (const d of data || []) {
+      const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+      if (chave) mapa[chave] = { observacao: d.observacao, resolvida: d.resolvida, id: d.id }
+    }
+    setOrientacoesSalvas(mapa)
+  }
+
+  async function salvarOrientacao() {
+    if (!orientando) return
+    setSalvandoOrient(true)
+    const d = orientando.divergencia
+    const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+
+    // Verifica se já existe na tabela
+    const existente = chave ? orientacoesSalvas[chave] : null
+
+    if (existente) {
+      // Atualiza
+      await supabase.from('divergencias').update({
+        observacao: orientando.texto,
+        resolvida: orientando.resolvida,
+      }).eq('id', existente.id)
+    } else {
+      // Cria novo registro na tabela divergencias
+      await supabase.from('divergencias').insert({
+        cliente_id: clienteId,
+        periodo,
+        tipo: d.tipo,
+        severidade: d.severidade,
+        valor: d.valor,
+        descricao: d.descricao,
+        banco_lancamento_id: d.banco_lancamento_id || null,
+        nota_fiscal_id: d.nota_fiscal_id || null,
+        compra_id: d.compra_id || null,
+        despesa_id: d.despesa_id || null,
+        observacao: orientando.texto,
+        resolvida: orientando.resolvida,
+      })
+    }
+
+    setToast(orientando.resolvida ? '✅ Marcado como resolvido!' : '💬 Orientação salva!')
+    setOrientando(null)
+    setSalvandoOrient(false)
+    await carregarOrientacoes()
+  }
+
+  function abrirOrientacao(div: ReturnType<typeof cruzarDados>['divergencias'][0]) {
+    const chave = div.banco_lancamento_id || div.compra_id || div.despesa_id
+    const existente = chave ? orientacoesSalvas[chave] : null
+    setOrientando({
+      divergencia: div,
+      texto: existente?.observacao || '',
+      resolvida: existente?.resolvida || false,
+    })
+  }
 
   async function rodarConciliacao() {
     setConciliando(true)
@@ -55,7 +126,7 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     setCarregando(false)
   }, [clienteId, periodo])
 
-  useEffect(() => { carregar() }, [carregar, refresh])
+  useEffect(() => { carregar(); carregarOrientacoes() }, [carregar, refresh])
 
   if (carregando || !resultado) {
     return <div style={{ color: 'var(--muted)', padding: 40, textAlign: 'center' }}>Processando cruzamento...</div>
@@ -113,9 +184,7 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
                 <Td><span style={{ color: 'var(--red)', fontWeight: 700 }}>{brl(d.valor || 0)}</span></Td>
                 <Td><Badge variant={d.severidade === 'alto' ? 'err' : 'warn'}>{d.severidade.toUpperCase()}</Badge></Td>
                 <Td>
-                  <Btn variant="ghost" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => setToast('Orientação registrada')}>
-                    Orientar
-                  </Btn>
+                  <BtnOrientar div={d} orientacoesSalvas={orientacoesSalvas} onOrientar={abrirOrientacao} />
                 </Td>
               </Tr>
             ))}
@@ -139,9 +208,7 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
                 <Td><span style={{ color: 'var(--orange)', fontWeight: 700 }}>{brl(d.valor || 0)}</span></Td>
                 <Td><Badge variant="warn">{d.severidade.toUpperCase()}</Badge></Td>
                 <Td>
-                  <Btn variant="ghost" style={{ padding: '4px 10px', fontSize: 11 }} onClick={() => setToast('Alerta enviado ao cliente')}>
-                    Alertar
-                  </Btn>
+                  <BtnOrientar div={d} orientacoesSalvas={orientacoesSalvas} onOrientar={abrirOrientacao} />
                 </Td>
               </Tr>
             ))}
@@ -175,7 +242,97 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
         </div>
       )}
 
+      {/* Modal de Orientação */}
+      {orientando && (
+        <Modal title="Orientação sobre divergência" onClose={() => setOrientando(null)}>
+          <div className="mt-1 space-y-3">
+            <div className="rounded-lg bg-secondary border border-border p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                {orientando.divergencia.tipo === 'receita_nao_declarada' ? '🔴 Receita não declarada'
+                  : orientando.divergencia.tipo === 'compra_sem_nf' ? '🟠 Compra sem NF'
+                  : '🟡 Despesa sem comprovante'}
+              </p>
+              <p className="text-sm text-foreground">{orientando.divergencia.descricao}</p>
+              {orientando.divergencia.valor && (
+                <p className="text-xs text-muted-foreground mt-1">Valor: {brl(orientando.divergencia.valor)}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
+                Orientação / Comentário
+              </label>
+              <textarea
+                value={orientando.texto}
+                onChange={e => setOrientando({ ...orientando, texto: e.target.value })}
+                placeholder="Ex: Verificado com o cliente — trata-se de devolução de mercadoria. Aguardando NF de devolução..."
+                rows={4}
+                className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              />
+            </div>
+
+            <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-lg border border-border bg-secondary/50 hover:bg-secondary transition-colors">
+              <input
+                type="checkbox"
+                checked={orientando.resolvida}
+                onChange={e => setOrientando({ ...orientando, resolvida: e.target.checked })}
+                className="w-4 h-4 accent-green-500"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground">Marcar como resolvida</p>
+                <p className="text-xs text-muted-foreground">Remove esta divergência das pendências ativas</p>
+              </div>
+              {orientando.resolvida && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <Btn variant="ghost" onClick={() => setOrientando(null)}>Cancelar</Btn>
+            <Btn onClick={salvarOrientacao} disabled={salvandoOrient || !orientando.texto.trim()}>
+              {salvandoOrient ? 'Salvando...' : 'Salvar orientação'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
+  )
+}
+
+// Botão orientar com indicador visual de comentário existente
+function BtnOrientar({
+  div, orientacoesSalvas, onOrientar,
+}: {
+  div: ReturnType<typeof cruzarDados>['divergencias'][0]
+  orientacoesSalvas: Record<string, { observacao: string; resolvida: boolean; id: string }>
+  onOrientar: (d: typeof div) => void
+}) {
+  const chave = div.banco_lancamento_id || div.compra_id || div.despesa_id
+  const existente = chave ? orientacoesSalvas[chave] : null
+
+  if (existente?.resolvida) {
+    return (
+      <button onClick={() => onOrientar(div)}
+        className="inline-flex items-center gap-1 text-xs text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-1 rounded-lg hover:bg-green-500/20 transition-colors">
+        <CheckCircle2 className="h-3 w-3" /> Resolvida
+      </button>
+    )
+  }
+
+  if (existente?.observacao) {
+    return (
+      <button onClick={() => onOrientar(div)}
+        className="inline-flex items-center gap-1 text-xs text-primary bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg hover:bg-primary/20 transition-colors"
+        title={existente.observacao}>
+        <MessageSquare className="h-3 w-3" /> Ver nota
+      </button>
+    )
+  }
+
+  return (
+    <button onClick={() => onOrientar(div)}
+      className="inline-flex items-center gap-1 text-xs text-muted-foreground bg-secondary border border-border px-2 py-1 rounded-lg hover:text-primary hover:border-primary/30 transition-colors">
+      <MessageSquare className="h-3 w-3" /> Orientar
+    </button>
   )
 }
