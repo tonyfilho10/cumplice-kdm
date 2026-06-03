@@ -63,6 +63,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   const [secao, setSecao] = useState<Section>(semCliente ? 'clientes' : 'visao-geral')
   const [periodo, setPeriodo] = useState(PERIODOS_LISTA[0].value)
   const [refresh, setRefresh] = useState(0)
+  const [atualizando, setAtualizando] = useState(false)
   // Collapsed state compartilhado entre Sidebar e main (evita hack de DOM)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
@@ -89,9 +90,11 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
     if (data) setClienteAtivo(data as Cliente)
   }, [clienteAtivo?.id])
 
-  function recarregar() {
+  async function recarregar() {
+    setAtualizando(true)
     setRefresh(r => r + 1)
-    refetchCliente()
+    await refetchCliente()
+    setTimeout(() => setAtualizando(false), 600)
   }
 
   const [titulo, subtitulo] = SECTION_TITLES[secao]
@@ -124,9 +127,9 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="outline" size="sm" onClick={recarregar} className="gap-2 text-xs">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Atualizar
+            <Button variant="outline" size="sm" onClick={recarregar} disabled={atualizando} className="gap-2 text-xs">
+              <RefreshCw className={`h-3.5 w-3.5 ${atualizando ? 'animate-spin' : ''}`} />
+              {atualizando ? 'Atualizando...' : 'Atualizar'}
             </Button>
           </div>
         </header>

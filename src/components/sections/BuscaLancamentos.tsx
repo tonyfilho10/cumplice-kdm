@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardTitle, ConfirmDelete, Toast, fmtData, brl } from '@/components/ui'
 import { Button } from '@/components/ui/button'
@@ -19,13 +19,16 @@ type Resultado = {
   periodo: string
 }
 
-export default function BuscaLancamentos({ clienteId, onRecarregar }: Props) {
+export default function BuscaLancamentos({ clienteId, periodo, refresh, onRecarregar }: Props) {
   const supabase = createClient()
   const [busca, setBusca] = useState('')
   const [resultados, setResultados] = useState<Resultado[]>([])
   const [buscando, setBuscando] = useState(false)
   const [toast, setToast] = useState('')
   const [confirmando, setConfirmando] = useState<{ id: string; tipo: 'compra' | 'nota'; acao: 'cancelar' | 'reativar' } | null>(null)
+
+  // Re-executa a busca atual quando os dados mudam (atualizar / após import)
+  useEffect(() => { if (busca.trim()) pesquisar(busca) }, [refresh])
 
   const pesquisar = useCallback(async (termo: string) => {
     if (!termo.trim()) { setResultados([]); return }

@@ -46,15 +46,18 @@ export default function Usuarios({ onRecarregar }: Props) {
 
   const carregar = useCallback(async () => {
     setCarregando(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    setEuId(user?.id || null)
-    const [resUsuarios, resClientes] = await Promise.all([
-      fetch('/api/usuarios'),
-      supabase.from('clientes').select('*').eq('ativo', true).order('razao_social'),
-    ])
-    if (resUsuarios.ok) setUsuarios(await resUsuarios.json())
-    setClientes((resClientes.data || []) as Cliente[])
-    setCarregando(false)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      setEuId(user?.id || null)
+      const [resUsuarios, resClientes] = await Promise.all([
+        fetch('/api/usuarios'),
+        supabase.from('clientes').select('*').eq('ativo', true).order('razao_social'),
+      ])
+      if (resUsuarios.ok) setUsuarios(await resUsuarios.json())
+      setClientes((resClientes.data || []) as Cliente[])
+    } finally {
+      setCarregando(false)
+    }
   }, [])
 
   useEffect(() => { carregar() }, [carregar])

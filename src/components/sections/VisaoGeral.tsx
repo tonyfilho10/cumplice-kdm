@@ -22,24 +22,38 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
   } | null>(null)
   const [carregando, setCarregando] = useState(true)
 
+  // Limpa dados ao trocar de cliente ou período (mostra loading do zero)
   useEffect(() => {
+    setDados(null)
+    setCarregando(true)
+  }, [clienteId, periodo])
+
+  // Busca dados — em refresh não bloqueia a tela (mantém dados anteriores visíveis)
+  useEffect(() => {
+    let cancelado = false
     async function carregar() {
-      setCarregando(true)
-      const [{ data: notas }, { data: compras }, { data: despesas }, { data: banco }] = await Promise.all([
-        supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
-        supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
-        supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-        supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      ])
-      setDados({
-        notas: (notas || []) as NotaFiscal[],
-        compras: (compras || []).map(r => ({ ...r, status: r.nf_entrada ? 'ok' : 'sem_nf' })) as Compra[],
-        despesas: (despesas || []).map(r => ({ ...r, status: r.documento ? 'ok' : 'sem_doc' })) as Despesa[],
-        banco: (banco || []) as BancoLancamento[],
-      })
-      setCarregando(false)
+      try {
+        const [{ data: notas }, { data: compras }, { data: despesas }, { data: banco }] = await Promise.all([
+          supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+          supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+          supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
+          supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
+        ])
+        if (cancelado) return
+        setDados({
+          notas: (notas || []) as NotaFiscal[],
+          compras: (compras || []).map(r => ({ ...r, status: r.nf_entrada ? 'ok' : 'sem_nf' })) as Compra[],
+          despesas: (despesas || []).map(r => ({ ...r, status: r.documento ? 'ok' : 'sem_doc' })) as Despesa[],
+          banco: (banco || []) as BancoLancamento[],
+        })
+      } catch {
+        if (!cancelado) setDados({ notas: [], compras: [], despesas: [], banco: [] })
+      } finally {
+        if (!cancelado) setCarregando(false)
+      }
     }
     carregar()
+    return () => { cancelado = true }
   }, [clienteId, periodo, refresh])
 
   if (carregando || !dados) {

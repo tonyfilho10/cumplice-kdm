@@ -85,45 +85,60 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
 
   async function importarXML(files: File[]) {
     setImportando(true)
-    const conteudos = await Promise.all(files.map(async f => ({ nome: f.name, conteudo: await f.text() })))
-    const res = await fetch(`/api/clientes/${clienteId}/importar-nfe`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files: conteudos, periodo }),
-    })
-    const result = await res.json()
-
-    // Recarrega sempre pelo período da tela — NFs alocadas em outro período não aparecem aqui (correto)
-    await carregar()
-    onRecarregar()
-
-    if (result.erro) {
-      setToast(`Erro: ${result.erro}`)
-    } else {
-      const n = result.importados?.length || 0
-      const d = result.duplicados?.length || 0
-      const e = result.erros?.length || 0
-      const fora = (result.importados as string[] || []).filter((s: string) => s.includes('→ alocado'))
-
-      // Se houver duplicatas ou erros, abre relatório detalhado
-      const c = result.cancelamentos?.length || 0
-      if (d > 0 || e > 0 || c > 0) {
-        setRelatorio({
-          importados: result.importados || [],
-          cancelamentos: result.cancelamentos || [],
-          duplicados: result.duplicados || [],
-          erros: result.erros || [],
+    try {
+      const conteudos = await Promise.all(files.map(async f => ({ nome: f.name, conteudo: await f.text() })))
+      let result: Record<string, unknown>
+      const abort = new AbortController()
+      const timeoutId = setTimeout(() => abort.abort(), 55_000) // 55s — antes do limite de 60s do Netlify
+      try {
+        const res = await fetch(`/api/clientes/${clienteId}/importar-nfe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ files: conteudos, periodo }),
+          signal: abort.signal,
         })
+        result = await res.json()
+      } catch (fetchErr) {
+        const isTimeout = fetchErr instanceof Error && fetchErr.name === 'AbortError'
+        setToast(isTimeout
+          ? 'Tempo esgotado (55s) — tente importar menos arquivos por vez'
+          : `Erro de conexão: ${fetchErr instanceof Error ? fetchErr.message : 'Verifique sua internet e tente novamente'}`)
+        return
+      } finally {
+        clearTimeout(timeoutId)
       }
 
-      let msg = `${n} NF(s) importada(s)`
-      if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
-      if (c > 0) msg += ` · ${c} cancelamento(s) processado(s)`
-      if (d > 0) msg += ` · ${d} duplicada(s)`
-      if (e > 0) msg += ` · ${e} erro(s)`
-      setToast(n > 0 || c > 0 ? msg : (d > 0 ? `Todas já importadas (${d} duplicadas)` : `Erro: ${result.erros?.[0]?.erro || 'Nenhuma NF importada'}`))
+      await carregar()
+      onRecarregar()
+
+      if (result.erro) {
+        setToast(`Erro: ${result.erro}`)
+      } else {
+        const n = (result.importados as string[] || []).length
+        const d = (result.duplicados as unknown[] || []).length
+        const e = (result.erros as unknown[] || []).length
+        const c = (result.cancelamentos as string[] || []).length
+        const fora = (result.importados as string[] || []).filter(s => s.includes('→ alocado'))
+
+        if (d > 0 || e > 0 || c > 0) {
+          setRelatorio({
+            importados: result.importados as string[] || [],
+            cancelamentos: result.cancelamentos as string[] || [],
+            duplicados: result.duplicados as { arquivo: string; numero: string; motivo: string; detalhe: string }[] || [],
+            erros: result.erros as { arquivo: string; erro: string; detalhe?: string }[] || [],
+          })
+        }
+
+        let msg = `${n} NF(s) importada(s)`
+        if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
+        if (c > 0) msg += ` · ${c} cancelamento(s) processado(s)`
+        if (d > 0) msg += ` · ${d} duplicada(s)`
+        if (e > 0) msg += ` · ${e} erro(s)`
+        setToast(n > 0 || c > 0 ? msg : (d > 0 ? `Todas já importadas (${d} duplicadas)` : `Erro: ${(result.erros as { erro: string }[])?.[0]?.erro || 'Nenhuma NF importada'}`))
+      }
+    } finally {
+      setImportando(false)
     }
-    setImportando(false)
   }
 
   // ── Relatório de notas faltantes (gaps na sequência numérica) ─────────────
@@ -164,7 +179,14 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
           <Input label="Valor Total (R$)" type="number" value={valor} onChange={e => setValor(e.target.value)} placeholder="0,00" />
           <Select label="CFOP" value={cfop} onChange={e => setCFOP(e.target.value)}>
             <option value="5102">5102 – Venda de mercadoria</option>
-            <option value="5405">5405 – Venda substituição tributária</option>
+            <option value="5101">5101 – Venda de produto industrializado</option>
+            <option value="5405">5405 – Venda c/ substituição tributária</option>
+            <option value="5403">5403 – Venda de mercadoria c/ ICMS-ST</option>
+            <option value="5933">5933 – Prestação de serviço (ISSQN)</option>
+            <option value="6101">6101 – Venda interestadual de produto</option>
+            <option value="6102">6102 – Venda interestadual de mercadoria</option>
+            <option value="6933">6933 – Serviço interestadual (ISSQN)</option>
+            <option value="5201">5201 – Devolução de compra</option>
             <option value="5949">5949 – Outra saída</option>
           </Select>
           <Select label="Forma de Recebimento" value={recebimento} onChange={e => setRecebimento(e.target.value)}>
@@ -295,7 +317,14 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
             <Input label="Valor (R$)" type="number" value={String(editando.valor)} onChange={e => setEditando({ ...editando, valor: parseFloat(e.target.value) || 0 })} />
             <Select label="CFOP" value={editando.cfop || ''} onChange={e => setEditando({ ...editando, cfop: e.target.value })}>
               <option value="5102">5102 – Venda de mercadoria</option>
-              <option value="5405">5405 – Venda substituição tributária</option>
+              <option value="5101">5101 – Venda de produto industrializado</option>
+              <option value="5405">5405 – Venda c/ substituição tributária</option>
+              <option value="5403">5403 – Venda de mercadoria c/ ICMS-ST</option>
+              <option value="5933">5933 – Prestação de serviço (ISSQN)</option>
+              <option value="6101">6101 – Venda interestadual de produto</option>
+              <option value="6102">6102 – Venda interestadual de mercadoria</option>
+              <option value="6933">6933 – Serviço interestadual (ISSQN)</option>
+              <option value="5201">5201 – Devolução de compra</option>
               <option value="5949">5949 – Outra saída</option>
             </Select>
             <Select label="Recebimento" value={editando.recebimento || ''} onChange={e => setEditando({ ...editando, recebimento: e.target.value })}>

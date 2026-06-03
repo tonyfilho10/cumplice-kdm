@@ -135,6 +135,13 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
       .order('data', { ascending: false })
 
     setCompras((fresco || []) as typeof compras)
+
+    // Dispara conciliação server-side para os períodos afetados pelas compras inseridas
+    const periodosAfetados = [...new Set((fresco || []).map((r: { periodo: string }) => r.periodo))]
+    await Promise.allSettled(
+      periodosAfetados.map(p => fetch(`/api/clientes/${clienteId}/conciliar?periodo=${p}`, { method: 'POST' }))
+    )
+
     onRecarregar()
 
     // Feedback detalhado

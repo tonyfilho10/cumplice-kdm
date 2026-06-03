@@ -19,8 +19,19 @@ export interface CFOPInfo {
   impacto: 'positivo' | 'negativo' | 'neutro'
 }
 
-// CFOPs que contam como VENDA (apenas os confirmados pela empresa)
-export const CFOPS_VENDA = new Set(['5101','5102','6101','6102','6107','6108'])
+// CFOPs que contam como VENDA (produtos + serviços + substituição tributária)
+export const CFOPS_VENDA = new Set([
+  // Vendas de produto/mercadoria
+  '5101','5102','5103','5104','5105','5106',
+  '6101','6102','6103','6104','6105','6106',
+  '6107','6108',
+  // Vendas com substituição tributária (ST)
+  '5401','5403','5405','6401','6403',
+  // Serviços (NFS-e — ISSQN)
+  '5933','6933',
+  // Industrialização por encomenda (já em CFOP_MAP como venda)
+  '5124','6124',
+])
 
 const CFOP_MAP: Record<string, CFOPInfo> = {
   // ── Vendas — apenas os CFOPs confirmados ──────────────────────────────────
@@ -31,13 +42,25 @@ const CFOP_MAP: Record<string, CFOPInfo> = {
   '6107': { tipo: 'venda', descricao: 'Venda p/ Zona Franca de Manaus',               badge: 'Venda ZFM', cor: 'text-green-400', impacto: 'positivo' },
   '6108': { tipo: 'venda', descricao: 'Venda interestadual c/ retenção ST',            badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
 
-  // ── Outros CFOPs de saída — não são vendas para esta empresa ─────────────
-  '5405': { tipo: 'outros', descricao: 'Venda com substituição tributária',           badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
-  '6403': { tipo: 'outros', descricao: 'Venda com ST interestadual',                  badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
-  '5106': { tipo: 'outros', descricao: 'Venda a não contribuinte',                    badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
-  '6106': { tipo: 'outros', descricao: 'Venda interestadual a não contribuinte',      badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  // ── Vendas com ST e outras modalidades de venda ──────────────────────────
+  '5103': { tipo: 'venda', descricao: 'Venda de produção fora do estabelecimento',    badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '5104': { tipo: 'venda', descricao: 'Venda de mercadoria fora do estabelecimento',  badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '5105': { tipo: 'venda', descricao: 'Venda de produção ao Governo',                 badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '5106': { tipo: 'venda', descricao: 'Venda de mercadoria a não contribuinte',       badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6103': { tipo: 'venda', descricao: 'Venda interestadual de produção fora estab.',  badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6104': { tipo: 'venda', descricao: 'Venda interestadual de mercadoria fora estab.',badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6105': { tipo: 'venda', descricao: 'Venda interestadual de produção ao Governo',   badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6106': { tipo: 'venda', descricao: 'Venda interestadual a não contribuinte',       badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '5401': { tipo: 'venda', descricao: 'Venda de produção c/ ICMS-ST',                 badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
+  '5403': { tipo: 'venda', descricao: 'Venda de mercadoria adquirida c/ ICMS-ST',     badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
+  '5405': { tipo: 'venda', descricao: 'Venda de mercadoria c/ substituição tributária', badge: 'Venda ST', cor: 'text-green-400', impacto: 'positivo' },
+  '6401': { tipo: 'venda', descricao: 'Venda interestadual de produção c/ ST',        badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
+  '6403': { tipo: 'venda', descricao: 'Venda interestadual de mercadoria c/ ST',      badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
   '5107': { tipo: 'outros', descricao: 'Venda p/ Zona Franca',                        badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
   '5108': { tipo: 'outros', descricao: 'Venda com ST',                                badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  // ── Serviços (NFS-e — tributados pelo ISSQN) ─────────────────────────────
+  '5933': { tipo: 'venda', descricao: 'Prestação de serviço no município (ISSQN)',    badge: 'Serviço',   cor: 'text-green-400', impacto: 'positivo' },
+  '6933': { tipo: 'venda', descricao: 'Prestação de serviço interestadual (ISSQN)',   badge: 'Serviço',   cor: 'text-green-400', impacto: 'positivo' },
 
   // ── Devoluções (deduzem faturamento) ─────────────────────────────────────
   '5201': { tipo: 'devolucao', descricao: 'Devolução de compra p/ industrialização', badge: 'Devolução',   cor: 'text-orange-400', impacto: 'negativo' },

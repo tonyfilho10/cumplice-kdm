@@ -100,7 +100,8 @@ function parseNFe(result: Record<string, unknown>): NFeParsed {
     numero: getText(ide.nNF),
     serie: getText(ide.serie),
     data_emissao: getText(ide.dhEmi || ide.dEmi).substring(0, 10),
-    cfop: itens[0]?.cfop || '',
+    // Prefere o CFOP de venda quando há itens mistos (ex: venda + remessa)
+    cfop: itens.find(it => ['5101','5102','5103','5104','5105','5106','6101','6102','6103','6104','6105','6106','6107','6108','5401','5403','5405','6401','6403','5124','6124'].includes(it.cfop))?.cfop || itens[0]?.cfop || '',
     // vNFTot inclui IBS+CBS (reforma tributária 2026) — preferir quando disponível
     valor_total: getNum(
       (inf.total as Record<string, unknown>)?.vNFTot ||
@@ -160,8 +161,7 @@ function parseNFSe(result: Record<string, unknown>): NFeParsed {
   // Chave — usa o atributo Id do infNFSe
   const chave = getText(inf['@_Id'] || `NFS${numero}`)
 
-  // CFOP padrão para serviços: 5933 (dentro do município) ou derivado do código tributário
-  const cfop = cTribNac ? '5933' : '5933'
+  const cfop = '5933'
 
   return {
     chave_acesso: chave,

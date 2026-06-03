@@ -125,26 +125,36 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     setConciliando(false)
   }
 
-  const carregar = useCallback(async () => {
+  // Limpa ao trocar cliente/período
+  useEffect(() => {
+    setResultado(null)
     setCarregando(true)
-    const [{ data: notas }, { data: compras }, { data: despesas }, { data: banco }, { data: thresh }] = await Promise.all([
-      supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
-      supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
-      supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      supabase.from('thresholds').select('*').eq('cliente_id', clienteId).maybeSingle(),
-    ])
+  }, [clienteId, periodo])
 
-    const r = cruzarDados(
-      clienteId, periodo,
-      (banco || []) as BancoLancamento[],
-      (notas || []) as NotaFiscal[],
-      (compras || []).map(c => ({ ...c, status: c.nf_entrada ? 'ok' : 'sem_nf' })) as Compra[],
-      (despesas || []).map(d => ({ ...d, status: d.documento ? 'ok' : 'sem_doc' })) as Despesa[],
-      thresh || undefined
-    )
-    setResultado(r)
-    setCarregando(false)
+  const carregar = useCallback(async () => {
+    try {
+      const [{ data: notas }, { data: compras }, { data: despesas }, { data: banco }, { data: thresh }] = await Promise.all([
+        supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+        supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+        supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
+        supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
+        supabase.from('thresholds').select('*').eq('cliente_id', clienteId).maybeSingle(),
+      ])
+
+      const r = cruzarDados(
+        clienteId, periodo,
+        (banco || []) as BancoLancamento[],
+        (notas || []) as NotaFiscal[],
+        (compras || []).map(c => ({ ...c, status: c.nf_entrada ? 'ok' : 'sem_nf' })) as Compra[],
+        (despesas || []).map(d => ({ ...d, status: d.documento ? 'ok' : 'sem_doc' })) as Despesa[],
+        thresh || undefined
+      )
+      setResultado(r)
+    } catch {
+      setResultado(cruzarDados(clienteId, periodo, [], [], [], [], undefined))
+    } finally {
+      setCarregando(false)
+    }
   }, [clienteId, periodo])
 
   useEffect(() => { carregar(); carregarOrientacoes() }, [carregar, refresh])

@@ -106,7 +106,7 @@ export async function POST(
         const dadosNF = {
           cliente_id: clienteId,
           periodo: periodoNF,
-          data: new Date(nfe.data_emissao),
+          data: new Date(nfe.data_emissao + 'T12:00:00'),
           numero: nfe.numero,
           chave_acesso: nfe.chave_acesso || null,
           cliente_nf: nfe.razao_destinatario || 'Consumidor Final',
