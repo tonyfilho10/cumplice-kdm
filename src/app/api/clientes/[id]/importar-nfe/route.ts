@@ -8,19 +8,22 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: clienteId } = await params
-  const supabase = await createClient()
-
-  // Auth
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
-
   try {
+    const { id: clienteId } = await params
+    const supabase = await createClient()
+
+    // Auth
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ erro: 'Não autenticado' }, { status: 401 })
+    }
+
+    // Parse body
     let rawBody: unknown
     try {
       rawBody = await request.json()
     } catch {
-      return NextResponse.json({ erro: 'Corpo da requisição inválido — verifique o tamanho dos arquivos' }, { status: 400 })
+      return NextResponse.json({ erro: 'Corpo da requisição inválido' }, { status: 400 })
     }
 
     if (!rawBody || typeof rawBody !== 'object') {
@@ -34,7 +37,7 @@ export async function POST(
       return NextResponse.json({ erro: 'Nenhum arquivo recebido' }, { status: 400 })
     }
 
-    // Verifica período aberto via Supabase
+    // Verifica período fechado
     const { data: periodoFechado } = await supabase
       .from('periodos_fechados')
       .select('id')
@@ -44,7 +47,7 @@ export async function POST(
 
     if (periodoFechado) {
       return NextResponse.json(
-        { erro: `O período ${periodo} está fechado. Solicite a um administrador para reabrir.` },
+        { erro: `O período ${periodo} está fechado.` },
         { status: 423 }
       )
     }
@@ -54,7 +57,7 @@ export async function POST(
     const duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[] = []
     const cancelamentos: string[] = []
 
-    // Processa em lotes de 5 em paralelo
+    // Processa em lotes de 5
     const LOTE = 5
     for (let i = 0; i < files.length; i += LOTE) {
       const lote = files.slice(i, i + LOTE)
@@ -63,37 +66,40 @@ export async function POST(
         try {
           const nfe = await parseNFeXML(file.conteudo)
 
-          if (nfe.erro) {
-            if (nfe.erro.startsWith('Arquivo ignorado:')) return
+          // Arquivo ignorado (consulta, inutilização)
+          if (nfe.erro?.startsWith('Arquivo ignorado:')) return
 
-            if (nfe.erro === '__evento__') {
-              const evento = parseEventoNFe(file.conteudo)
-              if (!evento) {
-                erros.push({ arquivo: file.nome, erro: 'Evento NF-e não reconhecido' })
-                return
-              }
-              if (evento.tipo === 'cancelamento' && evento.chave_nfe) {
-                const { data: nfExistente } = await supabase
-                  .from('notas_fiscais')
-                  .select('id, numero')
-                  .eq('chave_acesso', evento.chave_nfe)
-                  .eq('cliente_id', clienteId)
-                  .maybeSingle()
-
-                if (nfExistente) {
-                  await supabase.from('notas_fiscais').update({ cancelada: true }).eq('id', nfExistente.id)
-                  cancelamentos.push(`NF ${nfExistente.numero} cancelada — ${evento.descricao}`)
-                } else {
-                  cancelamentos.push(`Cancelamento para chave ${evento.chave_nfe.substring(0, 10)}... (NF não encontrada)`)
-                }
-              } else if (evento.tipo === 'carta_correcao') {
-                cancelamentos.push(`Carta de Correção para ${evento.chave_nfe.substring(0, 10)}... — ${evento.descricao}`)
-              } else {
-                cancelamentos.push(`Evento ${evento.descricao} recebido para ${file.nome}`)
-              }
+          // Evento (cancelamento, CCe)
+          if (nfe.erro === '__evento__') {
+            const evento = parseEventoNFe(file.conteudo)
+            if (!evento) {
+              erros.push({ arquivo: file.nome, erro: 'Evento NF-e não reconhecido' })
               return
             }
+            if (evento.tipo === 'cancelamento' && evento.chave_nfe) {
+              const { data: nfExistente } = await supabase
+                .from('notas_fiscais')
+                .select('id, numero')
+                .eq('chave_acesso', evento.chave_nfe)
+                .eq('cliente_id', clienteId)
+                .maybeSingle()
 
+              if (nfExistente) {
+                await supabase.from('notas_fiscais').update({ cancelada: true }).eq('id', nfExistente.id)
+                cancelamentos.push(`NF ${nfExistente.numero} cancelada — ${evento.descricao}`)
+              } else {
+                cancelamentos.push(`Cancelamento para chave ${evento.chave_nfe.substring(0, 10)}... (NF não encontrada)`)
+              }
+            } else if (evento.tipo === 'carta_correcao') {
+              cancelamentos.push(`Carta de Correção para ${evento.chave_nfe?.substring(0, 10)}... — ${evento.descricao}`)
+            } else {
+              cancelamentos.push(`Evento ${evento.descricao} recebido para ${file.nome}`)
+            }
+            return
+          }
+
+          // Erro de parse
+          if (nfe.erro) {
             erros.push({ arquivo: file.nome, erro: nfe.erro })
             return
           }
@@ -103,7 +109,7 @@ export async function POST(
           const dadosNF = {
             cliente_id: clienteId,
             periodo: periodoNF,
-            data: nfe.data_emissao + 'T12:00:00',
+            data: nfe.data_emissao,          // YYYY-MM-DD — Supabase date column
             numero: nfe.numero,
             chave_acesso: nfe.chave_acesso || null,
             cliente_nf: nfe.razao_destinatario || 'Consumidor Final',
@@ -113,6 +119,7 @@ export async function POST(
             cancelada: false,
           }
 
+          // NF-e com chave de acesso — upsert por chave
           if (nfe.chave_acesso) {
             const { data: existente } = await supabase
               .from('notas_fiscais')
@@ -132,7 +139,8 @@ export async function POST(
               return
             }
           } else if (nfe.numero) {
-            const query = supabase
+            // NFS-e sem chave — dedup por número + período
+            let q = supabase
               .from('notas_fiscais')
               .select('id, valor')
               .eq('cliente_id', clienteId)
@@ -140,9 +148,11 @@ export async function POST(
               .eq('periodo', periodoNF)
               .is('chave_acesso', null)
 
-            if (nfe.razao_destinatario) query.eq('cliente_nf', nfe.razao_destinatario)
+            if (nfe.razao_destinatario) {
+              q = q.eq('cliente_nf', nfe.razao_destinatario)
+            }
 
-            const { data: existente } = await query.maybeSingle()
+            const { data: existente } = await q.maybeSingle()
             if (existente) {
               await supabase.from('notas_fiscais').update(dadosNF).eq('id', existente.id)
               duplicados.push({
@@ -155,6 +165,7 @@ export async function POST(
             }
           }
 
+          // Insere nova NF
           const { error: insertError } = await supabase.from('notas_fiscais').insert({
             id: crypto.randomUUID(),
             ...dadosNF,
@@ -172,7 +183,7 @@ export async function POST(
         } catch (fileErr) {
           erros.push({
             arquivo: file.nome,
-            erro: fileErr instanceof Error ? fileErr.message : 'Erro inesperado',
+            erro: fileErr instanceof Error ? fileErr.message : 'Erro inesperado ao processar arquivo',
           })
         }
       }))
@@ -182,7 +193,7 @@ export async function POST(
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    console.error('[importar-nfe] erro:', msg)
+    console.error('[importar-nfe]', msg)
     return NextResponse.json({ erro: `Erro interno: ${msg}` }, { status: 500 })
   }
 }
