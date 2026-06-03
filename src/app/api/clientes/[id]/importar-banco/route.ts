@@ -111,11 +111,28 @@ export async function POST(
       porPeriodo[p] = (porPeriodo[p] || 0) + 1
     }
 
+    // ── Conciliação automática para cada período importado ──────────────────
+    const resultadosConcil: Record<string, number> = {}
+    for (const p of Object.keys(porPeriodo)) {
+      try {
+        const baseUrl = request.nextUrl.origin
+        const res = await fetch(`${baseUrl}/api/clientes/${clienteId}/conciliar?periodo=${p}`, {
+          method: 'POST',
+          headers: { cookie: request.headers.get('cookie') || '' },
+        })
+        if (res.ok) {
+          const r = await res.json()
+          resultadosConcil[p] = r.conciliados || 0
+        }
+      } catch { /* não bloqueia se falhar */ }
+    }
+
     return NextResponse.json({
       inseridos: criados.count,
       total_lidos,
       por_periodo: porPeriodo,
       duplicados_ignorados: duplicatas + (novos.length - criados.count),
+      conciliacoes: resultadosConcil,
     })
   } catch (err) {
     console.error('[importar-banco]', err)

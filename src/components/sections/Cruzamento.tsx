@@ -5,14 +5,33 @@ import { createClient } from '@/lib/supabase/client'
 import { cruzarDados } from '@/lib/crossref'
 import type { BancoLancamento, Compra, Despesa, NotaFiscal } from '@/lib/supabase/types'
 import { AlertBar, Badge, Btn, Card, CardTitle, KpiCard, Table, Td, Toast, Tr, brl, fmtData, } from '@/components/ui'
+import { Button } from '@/components/ui/button'
+import { GitMerge } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
-export default function Cruzamento({ clienteId, periodo, refresh }: Props) {
+export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }: Props) {
   const supabase = createClient()
   const [resultado, setResultado] = useState<ReturnType<typeof cruzarDados> | null>(null)
   const [toast, setToast] = useState('')
   const [carregando, setCarregando] = useState(true)
+  const [conciliando, setConciliando] = useState(false)
+
+  async function rodarConciliacao() {
+    setConciliando(true)
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/conciliar?periodo=${periodo}`, { method: 'POST' })
+      const result = await res.json()
+      if (result.ok) {
+        setToast(`✅ ${result.conciliados} conciliado(s) · ${result.a_conciliar} a conciliar (${result.pct_conciliado}%)`)
+        await carregar()
+        onRecarregar()
+      } else {
+        setToast(`Erro: ${result.erro}`)
+      }
+    } catch { setToast('Erro ao conciliar') }
+    setConciliando(false)
+  }
 
   const carregar = useCallback(async () => {
     setCarregando(true)
@@ -50,6 +69,14 @@ export default function Cruzamento({ clienteId, periodo, refresh }: Props) {
 
   return (
     <div>
+      {/* Botão de conciliação manual */}
+      <div className="flex justify-end mb-4">
+        <Button onClick={rodarConciliacao} disabled={conciliando} size="sm" className="gap-2">
+          <GitMerge className={`h-3.5 w-3.5 ${conciliando ? 'animate-spin' : ''}`} />
+          {conciliando ? 'Conciliando...' : 'Conciliar Agora'}
+        </Button>
+      </div>
+
       <AlertBar variant="warn">
         <span style={{ fontSize: 18 }}>🔍</span>
         <div>

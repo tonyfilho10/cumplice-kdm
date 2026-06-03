@@ -75,6 +75,21 @@ export async function POST(
       importados.push(`${label} ${nfe.numero}${aviso} — R$ ${nfe.valor_total.toLocaleString('pt-BR')}`)
     }
 
+    // ── Conciliação automática para cada período com NFs novas ─────────────
+    const periodosImportados = [...new Set(importados.map(s => {
+      const m = s.match(/→ alocado em (\d{4}-\d{2})/)
+      return m ? m[1] : periodo
+    }))]
+    for (const p of periodosImportados) {
+      try {
+        const baseUrl = request.nextUrl.origin
+        await fetch(`${baseUrl}/api/clientes/${clienteId}/conciliar?periodo=${p}`, {
+          method: 'POST',
+          headers: { cookie: request.headers.get('cookie') || '' },
+        })
+      } catch { /* não bloqueia se falhar */ }
+    }
+
     return NextResponse.json({ importados, erros, duplicados })
   } catch (err) {
     console.error('[importar-nfe]', err)

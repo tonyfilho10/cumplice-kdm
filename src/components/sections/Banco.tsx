@@ -309,32 +309,47 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         </div>
       </Card>
 
-      {/* Consolidado + filtro por banco */}
+      {/* Filtro + resumo por banco — dropdown */}
       {lancamentos.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-3">
+        <div className="mb-4 flex items-center gap-3 flex-wrap">
+          {/* Dropdown de banco */}
+          <div className="flex items-center gap-2">
+            <Landmark className="h-4 w-4 text-muted-foreground shrink-0" />
+            <select
+              value={contaFiltro || ''}
+              onChange={e => setContaFiltro(e.target.value || null)}
+              className="h-9 rounded-lg border border-border bg-secondary text-foreground text-sm px-3 pr-8 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer min-w-[180px]"
+            >
+              <option value="">Todas as contas ({lancamentos.length})</option>
+              {consolidado.map(c => (
+                <option key={c.conta} value={c.conta || ''}>
+                  {c.conta || 'Sem conta'} ({c.total})
+                </option>
+              ))}
+            </select>
+          </div>
 
-          {/* Card "Todas" */}
-          <BancoCard
-            label="Todas as contas"
-            entradas={lancamentos.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+l.valor,0)}
-            saidas={lancamentos.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0)}
-            total={lancamentos.length}
-            ativo={contaFiltro === null}
-            onClick={() => setContaFiltro(null)}
-          />
+          {/* Resumo da conta selecionada */}
+          {(() => {
+            const dados = contaFiltro
+              ? consolidado.find(c => c.conta === contaFiltro)
+              : { entradas: lancamentos.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+l.valor,0), saidas: lancamentos.filter(l=>l.tipo==='saida').reduce((s,l)=>s+l.valor,0) }
+            if (!dados) return null
+            const saldoC = dados.entradas - dados.saidas
+            return (
+              <div className="flex items-center gap-3 text-xs">
+                <span className="text-green-500 font-semibold">↑ {brl(dados.entradas)}</span>
+                <span className="text-red-400 font-semibold">↓ {brl(dados.saidas)}</span>
+                <span className={`font-bold ${saldoC >= 0 ? 'text-green-500' : 'text-red-400'}`}>= {brl(saldoC)}</span>
+              </div>
+            )
+          })()}
 
-          {/* Card por banco */}
-          {consolidado.map(c => (
-            <BancoCard
-              key={c.conta}
-              label={c.conta}
-              entradas={c.entradas}
-              saidas={c.saidas}
-              total={c.total}
-              ativo={contaFiltro === c.conta}
-              onClick={() => setContaFiltro(contaFiltro === c.conta ? null : c.conta)}
-            />
-          ))}
+          {contaFiltro && (
+            <button onClick={() => setContaFiltro(null)} className="text-xs text-primary hover:underline">
+              × limpar
+            </button>
+          )}
 
         </div>
       )}
