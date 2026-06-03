@@ -26,6 +26,8 @@ export async function POST(
     const periodoGuard = await verificarPeriodoAberto(clienteId, periodo)
     if (!periodoGuard.ok) return periodoGuard.response
 
+    console.log(`[importar-nfe] ${files.length} arquivo(s) recebido(s) — período: ${periodo}`)
+
     const importados: string[] = []
     const erros: { arquivo: string; erro: string; detalhe?: string }[] = []
     const duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[] = []
@@ -41,31 +43,34 @@ export async function POST(
         const nfe = await parseNFeXML(content)
 
         if (nfe.erro) {
-          // Arquivos ignorados silenciosamente (consultas, inutilizações)
-          if (nfe.erro.startsWith('Arquivo ignorado:')) return
+          // Arquivos ignorados (consultas, inutilizações) — registra como info, não erro
+          if (nfe.erro.startsWith('Arquivo ignorado:')) {
+            console.log(`[importar-nfe] ignorado: ${file.name} — ${nfe.erro}`)
+            return
+          }
 
           // Evento de cancelamento ou CCe — processa separadamente
           if (nfe.erro === '__evento__') {
             const evento = parseEventoNFe(content)
-            if (evento && evento.tipo === 'cancelamento' && evento.chave_nfe) {
-              // Marca a NF como cancelada pelo chave_acesso
+            if (!evento) {
+              erros.push({ arquivo: file.name, erro: 'Evento NF-e não reconhecido', detalhe: 'O arquivo parece ser um evento mas não foi possível extrair os dados' })
+              return
+            }
+            if (evento.tipo === 'cancelamento' && evento.chave_nfe) {
               const nfExistente = await prisma.notaFiscal.findFirst({
                 where: { chave_acesso: evento.chave_nfe, cliente_id: clienteId },
                 select: { id: true, numero: true },
               })
               if (nfExistente) {
-                await prisma.notaFiscal.update({
-                  where: { id: nfExistente.id },
-                  data: { cancelada: true },
-                })
+                await prisma.notaFiscal.update({ where: { id: nfExistente.id }, data: { cancelada: true } })
                 cancelamentos.push(`NF ${nfExistente.numero} cancelada — ${evento.descricao}`)
               } else {
-                // NF não importada ainda — registra aviso mas não é erro
-                cancelamentos.push(`Cancelamento recebido para chave ${evento.chave_nfe.substring(0, 10)}... (NF não encontrada no sistema)`)
+                cancelamentos.push(`Cancelamento para chave ${evento.chave_nfe.substring(0, 10)}... (NF não encontrada — importe a NF primeiro)`)
               }
-            } else if (evento && evento.tipo === 'carta_correcao') {
-              // CCe não altera dados fiscais — apenas registra informação
+            } else if (evento.tipo === 'carta_correcao') {
               cancelamentos.push(`Carta de Correção para chave ${evento.chave_nfe.substring(0, 10)}... — ${evento.descricao} (sem impacto nos valores)`)
+            } else {
+              cancelamentos.push(`Evento ${evento.descricao} recebido para ${file.name} (sem ação necessária)`)
             }
             return
           }
