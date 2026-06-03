@@ -19,13 +19,13 @@ export async function POST(
   try {
     let body: { files: { nome: string; conteudo: string }[]; periodo: string }
     try {
-      body = await request.json()
+      body = await request.json() as typeof body
     } catch (jsonErr) {
       console.error('[importar-nfe] falha ao parsear JSON do body:', jsonErr)
       return NextResponse.json({ erro: 'Corpo da requisição inválido — verifique o tamanho dos arquivos' }, { status: 400 })
     }
 
-    const { files, periodo } = body
+    const { files, periodo } = body!
 
     if (!periodo) return NextResponse.json({ erro: 'Período obrigatório' }, { status: 400 })
     if (!files || !Array.isArray(files) || files.length === 0) {
@@ -112,9 +112,9 @@ export async function POST(
         }
 
         if (nfe.chave_acesso) {
-          // NF-e: upsert por chave de acesso — reimporta/atualiza se já existir
-          const existente = await prisma.notaFiscal.findUnique({
-            where: { chave_acesso: nfe.chave_acesso },
+          // NF-e: upsert por chave de acesso — escopo restrito ao cliente para não sobrescrever dados de outro cliente
+          const existente = await prisma.notaFiscal.findFirst({
+            where: { chave_acesso: nfe.chave_acesso, cliente_id: clienteId },
             select: { id: true },
           })
           if (existente) {
@@ -159,11 +159,14 @@ export async function POST(
       }))
     }
 
-    // Concilia períodos das NFs importadas
-    const periodosImportados = [...new Set(importados.map(s => {
-      const m = s.match(/→ alocado em (\d{4}-\d{2})/)
-      return m ? m[1] : periodo
-    }))]
+    // Concilia todos os períodos afetados — inclui sempre o período corrente e os períodos reais das NFs
+    const periodosImportados = [...new Set([
+      periodo,
+      ...importados.flatMap(s => {
+        const m = s.match(/→ alocado em (\d{4}-\d{2})/)
+        return m ? [m[1]] : []
+      }),
+    ])]
     for (const p of periodosImportados) {
       try { await conciliarPeriodo(clienteId, p) } catch { }
     }

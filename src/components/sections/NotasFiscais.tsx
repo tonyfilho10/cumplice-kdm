@@ -93,14 +93,8 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
     })
     const result = await res.json()
 
-    // Recarrega direto do banco — sem depender de closure
-    const { data: fresco } = await supabase
-      .from('notas_fiscais')
-      .select('*')
-      .eq('cliente_id', clienteId)
-      .eq('periodo', periodo)
-      .order('data', { ascending: false })
-    setNotas((fresco || []) as typeof notas)
+    // Recarrega sempre pelo período da tela — NFs alocadas em outro período não aparecem aqui (correto)
+    await carregar()
     onRecarregar()
 
     if (result.erro) {
