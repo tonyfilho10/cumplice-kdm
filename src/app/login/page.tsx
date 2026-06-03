@@ -2,14 +2,12 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [carregando, setCarregando] = useState(false)
-  const router = useRouter()
   const supabase = createClient()
 
   async function handleLogin(e: React.FormEvent) {
@@ -17,34 +15,50 @@ export default function LoginPage() {
     setCarregando(true)
     setErro('')
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password: senha,
+    })
 
     if (error) {
-      setErro('E-mail ou senha incorretos.')
+      // Mensagem mais útil por tipo de erro
+      if (error.message.includes('Invalid login') || error.message.includes('invalid_credentials')) {
+        setErro('E-mail ou senha incorretos. Verifique os dados e tente novamente.')
+      } else if (error.message.includes('Email not confirmed')) {
+        setErro('E-mail não confirmado. Entre em contato com o administrador.')
+      } else if (error.message.includes('rate limit')) {
+        setErro('Muitas tentativas. Aguarde alguns minutos e tente novamente.')
+      } else {
+        setErro(`Erro ao entrar: ${error.message}`)
+      }
       setCarregando(false)
       return
     }
 
-    router.push('/dashboard')
+    if (!data.session) {
+      setErro('Sessão não iniciada. Tente novamente.')
+      setCarregando(false)
+      return
+    }
+
+    // Reload completo garante que os cookies de sessão sejam lidos pelo proxy SSR
+    // router.push() pode navegar antes dos cookies serem gravados no servidor
+    window.location.href = '/dashboard'
   }
 
   return (
-    <div style={{
-      minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'var(--bg)',
-    }}>
-      <div style={{
-        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16,
-        padding: '40px 36px', width: 380,
-      }}>
-        <div style={{ marginBottom: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)' }}>⚡ Cúmplice</div>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>Sistema de Inteligência Contábil</div>
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="w-[380px] rounded-2xl border border-border bg-card p-10 shadow-xl">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="text-3xl font-black text-foreground mb-1">⚡ Cúmplice</div>
+          <div className="text-sm text-muted-foreground">Sistema de Inteligência Contábil</div>
         </div>
 
-        <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          {/* Email */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
               E-mail
             </label>
             <input
@@ -52,16 +66,15 @@ export default function LoginPage() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
+              autoComplete="email"
               placeholder="seu@email.com"
-              style={{
-                background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)',
-                padding: '10px 12px', borderRadius: 8, fontSize: 14, outline: 'none',
-              }}
+              className="h-11 rounded-lg border border-border bg-secondary text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
             />
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {/* Senha */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
               Senha
             </label>
             <input
@@ -69,28 +82,24 @@ export default function LoginPage() {
               value={senha}
               onChange={e => setSenha(e.target.value)}
               required
+              autoComplete="current-password"
               placeholder="••••••••"
-              style={{
-                background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)',
-                padding: '10px 12px', borderRadius: 8, fontSize: 14, outline: 'none',
-              }}
+              className="h-11 rounded-lg border border-border bg-secondary text-foreground px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
             />
           </div>
 
+          {/* Erro */}
           {erro && (
-            <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#fca5a5' }}>
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400">
               {erro}
             </div>
           )}
 
+          {/* Botão */}
           <button
             type="submit"
             disabled={carregando}
-            style={{
-              background: 'var(--accent)', color: 'white', border: 'none', borderRadius: 8,
-              padding: '11px 0', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 4,
-              opacity: carregando ? 0.7 : 1,
-            }}
+            className="mt-1 h-11 rounded-lg bg-primary text-primary-foreground font-bold text-sm transition-opacity disabled:opacity-60 hover:opacity-90"
           >
             {carregando ? 'Entrando...' : 'Entrar'}
           </button>
