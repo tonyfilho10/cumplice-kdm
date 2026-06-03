@@ -17,10 +17,20 @@ export async function POST(
   if (!guard.ok) return guard.response
 
   try {
-    const body = await request.json() as { files: { nome: string; conteudo: string }[]; periodo: string }
+    let body: { files: { nome: string; conteudo: string }[]; periodo: string }
+    try {
+      body = await request.json()
+    } catch (jsonErr) {
+      console.error('[importar-nfe] falha ao parsear JSON do body:', jsonErr)
+      return NextResponse.json({ erro: 'Corpo da requisição inválido — verifique o tamanho dos arquivos' }, { status: 400 })
+    }
+
     const { files, periodo } = body
 
     if (!periodo) return NextResponse.json({ erro: 'Período obrigatório' }, { status: 400 })
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return NextResponse.json({ erro: 'Nenhum arquivo recebido' }, { status: 400 })
+    }
 
     const periodoGuard = await verificarPeriodoAberto(clienteId, periodo)
     if (!periodoGuard.ok) return periodoGuard.response
