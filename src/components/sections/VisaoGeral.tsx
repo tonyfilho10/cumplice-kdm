@@ -11,6 +11,12 @@ type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar
 
 export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Props) {
   const supabase = createClient()
+
+  // Simulação de estoque — valores temporários (perdem ao atualizar a página)
+  const [simEstoqueInicial, setSimEstoqueInicial] = useState('')
+  const [simEstoqueFinal, setSimEstoqueFinal]     = useState('')
+  const [mostrarSim, setMostrarSim]               = useState(false)
+
   const [dados, setDados] = useState<{
     notas: NotaFiscal[]; compras: Compra[]; despesas: Despesa[]; banco: BancoLancamento[]
   } | null>(null)
@@ -95,7 +101,17 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
     labelImposto = `Simples Nacional`
   }
 
-  const lucro_bruto = faturamento_nf - total_compras
+  // CMV: com ou sem simulação de estoque
+  // Fórmula real: CMV = Estoque Inicial + Compras − Estoque Final
+  // Sem estoque: CMV = Compras (simplificado)
+  const estoqueIni = parseFloat(simEstoqueInicial.replace(/\./g,'').replace(',','.')) || 0
+  const estoqueFin = parseFloat(simEstoqueFinal.replace(/\./g,'').replace(',','.')) || 0
+  const cmv_simulado   = estoqueIni > 0 || estoqueFin > 0
+    ? estoqueIni + total_compras - estoqueFin
+    : total_compras
+  const usando_sim = estoqueIni > 0 || estoqueFin > 0
+
+  const lucro_bruto  = faturamento_nf - cmv_simulado
   const resultado_liq = lucro_bruto - total_despesas - imposto
   const margem = faturamento_nf > 0 ? (resultado_liq / faturamento_nf * 100).toFixed(1) : '0'
 
@@ -139,12 +155,61 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
         <KpiCard label="Entradas no Banco" value={brl(entradas_banco)}
           delta={divergencia_banco_nf > 0 ? `⚠ ${brl(divergencia_banco_nf)} sem NF` : '✓ Conciliado'}
           deltaType={divergencia_banco_nf > 0 ? 'warn' : 'up'} topColor="var(--green)" />
-        <KpiCard label="Compras (Mercadoria)" value={brl(total_compras)}
-          delta={compras_sem_nf > 0 ? `▼ ${brl(compras_sem_nf)} sem nota` : '✓ Todas com NF'}
-          deltaType={compras_sem_nf > 0 ? 'down' : 'up'} topColor="var(--red)" />
+        <KpiCard label={usando_sim ? 'CMV (simulação)' : 'Compras / CMV'} value={brl(cmv_simulado)}
+          delta={usando_sim
+            ? `Est.ini ${brl(estoqueIni)} · Est.fin ${brl(estoqueFin)}`
+            : compras_sem_nf > 0 ? `▼ ${brl(compras_sem_nf)} sem nota` : '✓ Todas com NF'}
+          deltaType={usando_sim ? 'warn' : compras_sem_nf > 0 ? 'down' : 'up'} topColor="var(--red)" />
         <KpiCard label="Imposto Estimado" value={brl(imposto)}
           delta={faturamento_nf > 0 ? `${pct(aliquotaImposto)} · ${ehPresumido ? 'Presumido' : ehReal ? 'Lucro Real' : 'Simples'}` : '—'}
           topColor="var(--gold)" />
+      </div>
+
+      {/* Simulador de Estoque */}
+      <div className="mb-5 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🧮</span>
+            <span className="text-sm font-semibold text-foreground">Simulação de CMV com Estoque</span>
+            <span className="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded font-bold uppercase">Temporário</span>
+          </div>
+          <button onClick={() => setMostrarSim(s => !s)}
+            className="text-xs text-primary hover:underline">
+            {mostrarSim ? 'Ocultar' : 'Simular'}
+          </button>
+        </div>
+        {mostrarSim && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              CMV = Estoque Inicial + Compras ({brl(total_compras)}) − Estoque Final
+              <br/>Valores temporários — somem ao atualizar a página.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1">Estoque Inicial (R$)</label>
+                <input value={simEstoqueInicial} onChange={e => setSimEstoqueInicial(e.target.value)}
+                  placeholder="0,00" type="text"
+                  className="w-full h-9 rounded-lg border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1">Estoque Final (R$)</label>
+                <input value={simEstoqueFinal} onChange={e => setSimEstoqueFinal(e.target.value)}
+                  placeholder="0,00" type="text"
+                  className="w-full h-9 rounded-lg border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+            </div>
+            {usando_sim && (
+              <div className="flex items-center gap-6 text-xs bg-card rounded-lg p-3 border border-border">
+                <span className="text-muted-foreground">Est.Ini <strong className="text-foreground">{brl(estoqueIni)}</strong></span>
+                <span className="text-muted-foreground">+ Compras <strong className="text-foreground">{brl(total_compras)}</strong></span>
+                <span className="text-muted-foreground">− Est.Fin <strong className="text-foreground">{brl(estoqueFin)}</strong></span>
+                <span className="font-bold text-red-400">= CMV {brl(cmv_simulado)}</span>
+                <button onClick={() => { setSimEstoqueInicial(''); setSimEstoqueFinal('') }}
+                  className="ml-auto text-muted-foreground hover:text-destructive text-xs">× Limpar</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Cruzamento rápido */}

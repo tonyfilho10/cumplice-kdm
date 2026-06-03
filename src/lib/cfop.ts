@@ -19,20 +19,25 @@ export interface CFOPInfo {
   impacto: 'positivo' | 'negativo' | 'neutro'
 }
 
+// CFOPs que contam como VENDA (apenas os confirmados pela empresa)
+export const CFOPS_VENDA = new Set(['5101','5102','6101','6102','6107','6108'])
+
 const CFOP_MAP: Record<string, CFOPInfo> = {
-  // ── Vendas normais ────────────────────────────────────────────────────────
-  '5101': { tipo: 'venda', descricao: 'Venda de produto industrializado',            badge: 'Venda',       cor: 'text-green-400',  impacto: 'positivo' },
-  '6101': { tipo: 'venda', descricao: 'Venda interestadual de produto industrializado', badge: 'Venda',    cor: 'text-green-400',  impacto: 'positivo' },
-  '5102': { tipo: 'venda', descricao: 'Venda de mercadoria adquirida',                badge: 'Venda',       cor: 'text-green-400',  impacto: 'positivo' },
-  '6102': { tipo: 'venda', descricao: 'Venda interestadual de mercadoria',            badge: 'Venda',       cor: 'text-green-400',  impacto: 'positivo' },
-  '5405': { tipo: 'venda', descricao: 'Venda com substituição tributária',            badge: 'Venda ST',    cor: 'text-green-400',  impacto: 'positivo' },
-  '6403': { tipo: 'venda', descricao: 'Venda de mercadoria com ST (interestadual)',   badge: 'Venda ST',    cor: 'text-green-400',  impacto: 'positivo' },
-  '5107': { tipo: 'venda', descricao: 'Venda de produto industrializado p/ Zona Franca', badge: 'Venda',   cor: 'text-green-400',  impacto: 'positivo' },
-  '6107': { tipo: 'venda', descricao: 'Venda p/ Zona Franca',                        badge: 'Venda ZFM',   cor: 'text-green-400',  impacto: 'positivo' },
-  '5106': { tipo: 'venda', descricao: 'Venda a não contribuinte',                    badge: 'Venda',       cor: 'text-green-400',  impacto: 'positivo' },
-  '6106': { tipo: 'venda', descricao: 'Venda interestadual a não contribuinte',      badge: 'Venda',       cor: 'text-green-400',  impacto: 'positivo' },
-  '5108': { tipo: 'venda', descricao: 'Venda de mercadoria sujeita ao regime ST',    badge: 'Venda ST',    cor: 'text-green-400',  impacto: 'positivo' },
-  '6108': { tipo: 'venda', descricao: 'Venda interestadual c/ retenção ST',          badge: 'Venda ST',    cor: 'text-green-400',  impacto: 'positivo' },
+  // ── Vendas — apenas os CFOPs confirmados ──────────────────────────────────
+  '5101': { tipo: 'venda', descricao: 'Venda de produto industrializado',              badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '5102': { tipo: 'venda', descricao: 'Venda de mercadoria adquirida',                 badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6101': { tipo: 'venda', descricao: 'Venda interestadual de produto industrializado', badge: 'Venda',    cor: 'text-green-400', impacto: 'positivo' },
+  '6102': { tipo: 'venda', descricao: 'Venda interestadual de mercadoria',             badge: 'Venda',     cor: 'text-green-400', impacto: 'positivo' },
+  '6107': { tipo: 'venda', descricao: 'Venda p/ Zona Franca de Manaus',               badge: 'Venda ZFM', cor: 'text-green-400', impacto: 'positivo' },
+  '6108': { tipo: 'venda', descricao: 'Venda interestadual c/ retenção ST',            badge: 'Venda ST',  cor: 'text-green-400', impacto: 'positivo' },
+
+  // ── Outros CFOPs de saída — não são vendas para esta empresa ─────────────
+  '5405': { tipo: 'outros', descricao: 'Venda com substituição tributária',           badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  '6403': { tipo: 'outros', descricao: 'Venda com ST interestadual',                  badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  '5106': { tipo: 'outros', descricao: 'Venda a não contribuinte',                    badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  '6106': { tipo: 'outros', descricao: 'Venda interestadual a não contribuinte',      badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  '5107': { tipo: 'outros', descricao: 'Venda p/ Zona Franca',                        badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
+  '5108': { tipo: 'outros', descricao: 'Venda com ST',                                badge: 'Não venda', cor: 'text-muted-foreground', impacto: 'neutro' },
 
   // ── Devoluções (deduzem faturamento) ─────────────────────────────────────
   '5201': { tipo: 'devolucao', descricao: 'Devolução de compra p/ industrialização', badge: 'Devolução',   cor: 'text-orange-400', impacto: 'negativo' },
@@ -88,7 +93,9 @@ export function classificarCFOP(cfop: string | null | undefined): CFOPInfo {
   const p = clean.substring(0, 1)
   if (p === '5' || p === '6') {
     const seg = clean.substring(0, 2)
-    if (seg === '51' || seg === '61') return { tipo: 'venda', descricao: `CFOP ${clean}`, badge: 'Venda', cor: 'text-green-400', impacto: 'positivo' }
+    // Só são venda se o CFOP completo estiver na lista confirmada
+    if (CFOPS_VENDA.has(clean)) return { tipo: 'venda', descricao: `CFOP ${clean}`, badge: 'Venda', cor: 'text-green-400', impacto: 'positivo' }
+    if (seg === '51' || seg === '61') return { tipo: 'outros', descricao: `CFOP ${clean}`, badge: 'Saída', cor: 'text-muted-foreground', impacto: 'neutro' }
     if (seg === '59' || seg === '69') return { tipo: 'remessa', descricao: `CFOP ${clean}`, badge: 'Remessa', cor: 'text-yellow-400', impacto: 'neutro' }
     if (seg === '52' || seg === '62') return { tipo: 'devolucao', descricao: `CFOP ${clean}`, badge: 'Devolução', cor: 'text-orange-400', impacto: 'negativo' }
   }
