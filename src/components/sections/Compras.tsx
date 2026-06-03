@@ -93,6 +93,16 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     const avisos: string[] = []
     let processados = 0
 
+    // Converte CFOP da perspectiva do emitente para perspectiva de entrada (destinatário)
+    // 5xxx (saída estadual)        → 1xxx (entrada estadual)
+    // 6xxx (saída interestadual)   → 2xxx (entrada interestadual)
+    function toEntryCFOP(cfop: string | undefined): string | null {
+      if (!cfop) return null
+      if (cfop.startsWith('5')) return '1' + cfop.slice(1)
+      if (cfop.startsWith('6')) return '2' + cfop.slice(1)
+      return cfop // já é CFOP de entrada (1xxx/2xxx)
+    }
+
     // Processa em lotes de 5 em paralelo
     const LOTE = 5
     const nfes = sucesso.filter(nfe => {
@@ -104,6 +114,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     for (let i = 0; i < nfes.length; i += LOTE) {
       const lote = nfes.slice(i, i + LOTE)
       await Promise.all(lote.map(async (nfe) => {
+        const cfopEntrada = toEntryCFOP(nfe.cfop)
         const { error } = await supabase.from('compras').insert({
           id: crypto.randomUUID(),
           cliente_id: clienteId,
@@ -113,6 +124,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
           cnpj_fornecedor: nfe.cnpj_emitente || null,
           valor: nfe.valor_total,
           nf_entrada: nfe.numero,
+          cfop: cfopEntrada,
           categoria: 'Mercadoria para Revenda',
           pagamento: 'Importado XML',
         })
