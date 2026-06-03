@@ -78,6 +78,26 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     await carregarOrientacoes()
   }
 
+  async function limparOrientacao() {
+    if (!orientando) return
+    setSalvandoOrient(true)
+    const d = orientando.divergencia
+    const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+    const existente = chave ? orientacoesSalvas[chave] : null
+
+    if (existente) {
+      await supabase.from('divergencias').update({
+        observacao: null,
+        resolvida: false,
+      }).eq('id', existente.id)
+    }
+
+    setToast('🗑️ Orientação removida')
+    setOrientando(null)
+    setSalvandoOrient(false)
+    await carregarOrientacoes()
+  }
+
   function abrirOrientacao(div: ReturnType<typeof cruzarDados>['divergencias'][0]) {
     const chave = div.banco_lancamento_id || div.compra_id || div.despesa_id
     const existente = chave ? orientacoesSalvas[chave] : null
@@ -243,8 +263,11 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
       )}
 
       {/* Modal de Orientação */}
-      {orientando && (
-        <Modal title="Orientação sobre divergência" onClose={() => setOrientando(null)}>
+      {orientando && (() => {
+        const chave = orientando.divergencia.banco_lancamento_id || orientando.divergencia.compra_id || orientando.divergencia.despesa_id
+        const temOrientacao = !!(chave && orientacoesSalvas[chave]?.observacao)
+        return (
+        <Modal title={temOrientacao ? 'Editar Orientação' : 'Nova Orientação'} onClose={() => setOrientando(null)}>
           <div className="mt-1 space-y-3">
             <div className="rounded-lg bg-secondary border border-border p-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
@@ -285,14 +308,24 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
               {orientando.resolvida && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
             </label>
           </div>
-          <div className="flex justify-end gap-2 mt-5">
-            <Btn variant="ghost" onClick={() => setOrientando(null)}>Cancelar</Btn>
-            <Btn onClick={salvarOrientacao} disabled={salvandoOrient || !orientando.texto.trim()}>
-              {salvandoOrient ? 'Salvando...' : 'Salvar orientação'}
-            </Btn>
+          <div className="flex items-center justify-between mt-5">
+            <div>
+              {temOrientacao && (
+                <Btn variant="danger" onClick={limparOrientacao} disabled={salvandoOrient}>
+                  🗑️ Remover orientação
+                </Btn>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="ghost" onClick={() => setOrientando(null)}>Cancelar</Btn>
+              <Btn onClick={salvarOrientacao} disabled={salvandoOrient || !orientando.texto.trim()}>
+                {salvandoOrient ? 'Salvando...' : temOrientacao ? 'Salvar edição' : 'Salvar orientação'}
+              </Btn>
+            </div>
           </div>
         </Modal>
-      )}
+        )
+      })()}
 
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
