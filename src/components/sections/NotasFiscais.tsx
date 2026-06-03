@@ -175,8 +175,14 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
                 <span className={cfopInfo.tipo === 'remessa' || cfopInfo.tipo === 'retorno_remessa' ? 'text-muted-foreground line-through' : ''}>
                   {brl(n.valor)}
                 </span>
-                {(cfopInfo.tipo === 'remessa' || cfopInfo.tipo === 'retorno_remessa') && (
-                  <span className="text-[10px] text-yellow-400 block">não conta</span>
+                {cfopInfo.tipo === 'remessa' && (
+                  <span className="text-[10px] text-yellow-400 block">excluída</span>
+                )}
+                {cfopInfo.tipo === 'retorno_remessa' && (
+                  <span className="text-[10px] text-orange-400 block">−deduz fat.</span>
+                )}
+                {cfopInfo.tipo === 'devolucao' && (
+                  <span className="text-[10px] text-orange-400 block">−deduz fat.</span>
                 )}
               </Td>
               <Td>{n.recebimento}</Td>

@@ -48,12 +48,14 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
   const notasRetorno   = notas.filter(n => ehRetorno(n.cfop))
   const notasDevolucao = notas.filter(n => ehDevolucao(n.cfop))
 
-  // Faturamento real = vendas - devoluções (exclui remessas e retornos de estoque)
-  const faturamento_vendas   = notasVenda.reduce((s, n) => s + n.valor, 0)
+  // Totais por tipo
+  const total_remessas         = notasRemessa.reduce((s, n) => s + n.valor, 0)
+  const total_retornos         = notasRetorno.reduce((s, n) => s + n.valor, 0)
+
+  // Faturamento real = vendas - devoluções - retornos (remessas são neutras)
+  const faturamento_vendas     = notasVenda.reduce((s, n) => s + n.valor, 0)
   const faturamento_devolucoes = notasDevolucao.reduce((s, n) => s + n.valor, 0)
-  const faturamento_nf       = faturamento_vendas - faturamento_devolucoes
-  const total_remessas       = notasRemessa.reduce((s, n) => s + n.valor, 0)
-  const total_retornos       = notasRetorno.reduce((s, n) => s + n.valor, 0)
+  const faturamento_nf         = faturamento_vendas - faturamento_devolucoes - total_retornos
 
   const entradas_banco = banco.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
   const total_compras = compras.reduce((s, c) => s + c.valor, 0)
@@ -101,8 +103,13 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
         <KpiCard label="Faturamento Real" value={brl(faturamento_nf)}
-          delta={total_remessas > 0 ? `Remessas excluídas: ${brl(total_remessas)}` : `${notasVenda.length} NFs de venda`}
-          deltaType={total_remessas > 0 ? 'warn' : undefined} topColor="var(--accent)" />
+          delta={
+            total_remessas > 0 || total_retornos > 0
+              ? `−${brl(total_retornos)} retornos · remessas excl.`
+              : `${notasVenda.length} NFs de venda`
+          }
+          deltaType={total_remessas > 0 || total_retornos > 0 ? 'warn' : undefined}
+          topColor="var(--accent)" />
         <KpiCard label="Entradas no Banco" value={brl(entradas_banco)}
           delta={divergencia_banco_nf > 0 ? `⚠ ${brl(divergencia_banco_nf)} sem NF` : '✓ Conciliado'}
           deltaType={divergencia_banco_nf > 0 ? 'warn' : 'up'} topColor="var(--green)" />
