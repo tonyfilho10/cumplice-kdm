@@ -12,9 +12,10 @@ export const CATEGORIAS_DESPESA: Record<string, string | null> = {
   'Marketing':            'Marketing',
   'Manutenção':           'Manutenção',
 
-  // ❌ NÃO viram despesa automaticamente:
-  'Imposto/Tributo':      null,  // DAS/DARF = lançamento tributário específico
-  'Despesa Operacional':  null,  // MUITO GENÉRICO — inclui pagamentos de fornecedor
+  // ✅ Tributos reais são despesas (DAS, DARF, FGTS, GPS)
+  'Imposto/Tributo':      'Outro',
+  // ❌ NÃO vira despesa — GENÉRICO demais, inclui transferências e fornecedores
+  'Despesa Operacional':  null,
   'Venda de Mercadoria':  null,  // receita
   'Recebimento de Duplicata': null,
   'Empréstimo/Aporte':    null,

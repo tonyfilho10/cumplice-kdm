@@ -49,15 +49,13 @@ const CFOP_MAP: Record<string, CFOPInfo> = {
   '5949': { tipo: 'remessa', descricao: 'Outra saída de mercadoria',                 badge: 'Remessa',     cor: 'text-yellow-400', impacto: 'neutro' },
   '6949': { tipo: 'remessa', descricao: 'Outra saída interestadual',                 badge: 'Remessa',     cor: 'text-yellow-400', impacto: 'neutro' },
 
-  // ── Retornos de remessa — NEUTROS (excluídos, não deduzem faturamento) ───
-  // 6902: KDM processou e devolveu as peças — já compensado pelo 6124 (serviço)
-  // 5929: mercadorias de exposição voltaram — nunca foram vendidas
-  '5902': { tipo: 'remessa', descricao: 'Retorno de industrialização (saída)',       badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
-  '6902': { tipo: 'remessa', descricao: 'Retorno interestadual de industrialização', badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
-  '5904': { tipo: 'remessa', descricao: 'Retorno de remessa p/ venda',              badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
-  '5929': { tipo: 'remessa', descricao: 'Retorno de mercadoria em exposição',       badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
-  '6908': { tipo: 'remessa', descricao: 'Retorno de mercadoria depositada',         badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
-  '6923': { tipo: 'remessa', descricao: 'Retorno de depósito fechado',              badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
+  // ── Retornos — DEDUZEM o faturamento (saídas sem receita correspondente) ──
+  '5902': { tipo: 'retorno_remessa', descricao: 'Retorno de industrialização',              badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '6902': { tipo: 'retorno_remessa', descricao: 'Retorno interestadual de industrialização', badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '5904': { tipo: 'retorno_remessa', descricao: 'Retorno de remessa p/ venda',              badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '5929': { tipo: 'retorno_remessa', descricao: 'Retorno de mercadoria em exposição',       badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '6908': { tipo: 'retorno_remessa', descricao: 'Retorno de mercadoria depositada',         badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
+  '6923': { tipo: 'retorno_remessa', descricao: 'Retorno de depósito fechado',              badge: 'Retorno', cor: 'text-blue-400', impacto: 'negativo' },
 
   // ── Industrialização — é RECEITA de serviço prestado ────────────────────
   // KDM recebe matéria-prima, industrializa e devolve cobrando pelo serviço
@@ -78,7 +76,6 @@ const CFOP_MAP: Record<string, CFOPInfo> = {
   '6912': { tipo: 'remessa', descricao: 'Remessa p/ demonstração',                    badge: 'Remessa',     cor: 'text-yellow-400', impacto: 'neutro' },
   '6913': { tipo: 'remessa', descricao: 'Retorno de demonstração',                   badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
   '6911': { tipo: 'remessa', descricao: 'Remessa p/ armazenagem',                    badge: 'Remessa',     cor: 'text-yellow-400', impacto: 'neutro' },
-  '2216': { tipo: 'entrada_remessa', descricao: 'Entrada de mercadoria p/ industrialização (interestadual)', badge: 'Ent.Rem.', cor: 'text-cyan-400', impacto: 'neutro' },
 }
 
 export function classificarCFOP(cfop: string | null | undefined): CFOPInfo {

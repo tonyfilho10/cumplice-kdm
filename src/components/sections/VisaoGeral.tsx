@@ -53,11 +53,11 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
   // (notasRetorno agora é remessa, total_retornos mantido para compatibilidade)
   const total_retornos         = notasRetorno.reduce((s, n) => s + n.valor, 0)
 
-  // Faturamento real = vendas - devoluções de venda (6201/6202)
-  // 6902/5902 e outros retornos são NEUTROS — excluídos mas não deduzem
+  // Faturamento real = vendas − devoluções − retornos
+  // Remessas: excluídas (neutras — saída de estoque sem receita)
   const faturamento_vendas     = notasVenda.reduce((s, n) => s + n.valor, 0)
   const faturamento_devolucoes = notasDevolucao.reduce((s, n) => s + n.valor, 0)
-  const faturamento_nf         = faturamento_vendas - faturamento_devolucoes
+  const faturamento_nf         = faturamento_vendas - faturamento_devolucoes - total_retornos
 
   const entradas_banco = banco.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
   const total_compras = compras.reduce((s, c) => s + c.valor, 0)

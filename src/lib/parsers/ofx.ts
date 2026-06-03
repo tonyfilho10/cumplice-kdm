@@ -27,14 +27,15 @@ export type OFXResultado = {
 const CATEGORIAS: [string, string[]][] = [
   ['Venda de Mercadoria',  ['PIX RECEB', 'CARTAO POS', 'VENDA', 'TEF CRED', 'CIELO', 'STONE', 'REDE ', 'GETNET', 'PAGSEGURO', 'MERCADO PAGO']],
   ['Pagamento Fornecedor', ['PGTO FORNEC', 'PAG FORNEC', 'BOLETO PAGO', 'TED PAGO', 'PIX ENVIADO']],
-  ['Folha de Pagamento',   ['FOLHA', 'SALARIO', 'FOPAG', 'PGTO FUNC', 'PAG FUNC']],
+  ['Folha de Pagamento',   ['FOLHA', 'SALARIO', 'FOPAG', 'PGTO FUNC', 'PAG FUNC', 'FOL PAGTO', 'FOL PAG', 'PAGTO FOLHA', 'PAGAMENTO FOLHA']],
   ['Pró-Labore',           ['PRO-LABORE', 'PROLABORE', 'PRO LABORE', 'RETIRADA SOCIO', 'RETIRADA']],
   ['Aluguel',              ['ALUGUEL', 'LOCACAO', 'ALUG ']],
   ['Energia Elétrica',     ['CELESC', 'CEMIG', 'LIGHT ', 'CPFL', 'COELBA', 'ENERGISA', 'CEEE', 'ENEL ', 'ENERGIA ELET']],
   ['Telefone/Internet',    ['VIVO', 'CLARO', 'TIM ', 'NET COMBO', 'EMBRATEL', 'OI FIXO', 'TELEFONE', 'INTERNET']],
-  ['Imposto/Tributo',      ['DAS-', 'DAS ', 'DARF', ' GPS ', 'FGTS', 'SIMPLES NAC', 'RECEITA FED', 'TRIBUTO', 'INSS']],
+  ['Imposto/Tributo',      ['DAS-', 'DAS ', 'DARF', ' GPS ', 'FGTS', 'SIMPLES NAC', 'RECEITA FED', 'TRIBUTO', 'INSS', 'PG ORG GOV', 'PGTO TRIBUTO']],
   ['Contabilidade',        ['CONTABILIDADE', 'HONORARIOS', 'ESCRIT CONT']],
-  ['Empréstimo/Aporte',    ['EMPRESTIMO', 'APORTE', 'TED APORTE', 'CAPITAL SOCIAL']],
+  // Investimentos e transferências — NÃO são despesas operacionais
+  ['Empréstimo/Aporte',    ['EMPRESTIMO', 'APORTE', 'TED APORTE', 'CAPITAL SOCIAL', 'AP CDB', 'APLIC ', 'APLIC.', 'RESGATE', 'INVEST', 'FUND', 'ENVIO TEV', 'TRANSF ', 'TRANSFERENCIA']],
 ]
 
 function inferirCategoria(desc: string, tipo: 'entrada' | 'saida'): string {
