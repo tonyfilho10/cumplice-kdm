@@ -97,6 +97,17 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
           body: JSON.stringify({ files: conteudos, periodo }),
           signal: abort.signal,
         })
+        const contentType = res.headers.get('content-type') || ''
+        if (!contentType.includes('application/json')) {
+          // Netlify/servidor retornou erro em texto puro (ex: 413, 500, 502)
+          const texto = await res.text().catch(() => `HTTP ${res.status}`)
+          setToast(
+            res.status === 413 ? 'Arquivos muito grandes — importe no máximo 5 XMLs por vez'
+            : res.status >= 500 ? `Erro no servidor (${res.status}) — tente novamente em instantes`
+            : `Erro inesperado (${res.status}): ${texto.substring(0, 80)}`
+          )
+          return
+        }
         result = await res.json()
       } catch (fetchErr) {
         const isTimeout = fetchErr instanceof Error && fetchErr.name === 'AbortError'
