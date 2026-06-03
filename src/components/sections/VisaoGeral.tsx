@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { calcularSimples } from '@/lib/crossref'
+import { calcularSimples, calcularLucroPresumido } from '@/lib/crossref'
 import type { Cliente, Compra, Despesa, NotaFiscal, BancoLancamento } from '@/lib/supabase/types'
 import { AlertBar, Card, CardTitle, KpiCard, Tag, brl, pct } from '@/components/ui'
 import { ehVenda, ehRemessa, ehRetorno, ehDevolucao } from '@/lib/cfop'
@@ -67,9 +67,33 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
   const despesas_sem_doc = despesas.filter(d => d.status === 'sem_doc').reduce((s, d) => s + d.valor, 0)
   const divergencia_banco_nf = Math.max(0, entradas_banco - faturamento_nf)
 
-  // Simples Nacional estimado
-  const acumulado_est = faturamento_nf * 5
-  const { imposto } = calcularSimples(acumulado_est, faturamento_nf)
+  // Calcula imposto conforme o regime do cliente
+  const regimeLower = (cliente.regime || '').toLowerCase()
+  const ehPresumido = regimeLower.includes('presumido')
+  const ehReal      = regimeLower.includes('real')
+
+  let imposto = 0
+  let labelImposto = ''
+  let aliquotaImposto = 0
+
+  if (ehPresumido) {
+    const { total, pis, cofins, irpj, csll } = calcularLucroPresumido(faturamento_nf)
+    imposto = total
+    aliquotaImposto = faturamento_nf > 0 ? total / faturamento_nf * 100 : 0
+    labelImposto = `Lucro Presumido (PIS+COFINS+IRPJ+CSLL)`
+  } else if (ehReal) {
+    // Lucro Real: estimativa simplificada (PIS 1.65% + COFINS 7.6% sobre faturamento)
+    imposto = faturamento_nf * (0.0165 + 0.076)
+    aliquotaImposto = faturamento_nf > 0 ? imposto / faturamento_nf * 100 : 0
+    labelImposto = `Lucro Real (PIS+COFINS estimado)`
+  } else {
+    // Simples Nacional
+    const acumulado_est = faturamento_nf * 5
+    const r = calcularSimples(acumulado_est, faturamento_nf)
+    imposto = r.imposto
+    aliquotaImposto = r.aliquota_efetiva * 100
+    labelImposto = `Simples Nacional`
+  }
 
   const lucro_bruto = faturamento_nf - total_compras
   const resultado_liq = lucro_bruto - total_despesas - imposto
@@ -106,11 +130,11 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
         <KpiCard label="Faturamento Real" value={brl(faturamento_nf)}
           delta={
-            total_remessas > 0
-              ? `remessas/retornos excluídos: ${brl(total_remessas)}`
+            (total_remessas + total_retornos) > 0
+              ? `−${brl(total_retornos)} retornos · −${brl(total_remessas)} rem. excl.`
               : `${notasVenda.length} NFs de venda`
           }
-          deltaType={total_remessas > 0 ? 'warn' : undefined}
+          deltaType={(total_remessas + total_retornos) > 0 ? 'warn' : undefined}
           topColor="var(--accent)" />
         <KpiCard label="Entradas no Banco" value={brl(entradas_banco)}
           delta={divergencia_banco_nf > 0 ? `⚠ ${brl(divergencia_banco_nf)} sem NF` : '✓ Conciliado'}
@@ -119,7 +143,7 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
           delta={compras_sem_nf > 0 ? `▼ ${brl(compras_sem_nf)} sem nota` : '✓ Todas com NF'}
           deltaType={compras_sem_nf > 0 ? 'down' : 'up'} topColor="var(--red)" />
         <KpiCard label="Imposto Estimado" value={brl(imposto)}
-          delta={faturamento_nf > 0 ? `${pct(imposto / faturamento_nf * 100)} do faturamento` : '—'}
+          delta={faturamento_nf > 0 ? `${pct(aliquotaImposto)} · ${ehPresumido ? 'Presumido' : ehReal ? 'Lucro Real' : 'Simples'}` : '—'}
           topColor="var(--gold)" />
       </div>
 
@@ -174,7 +198,7 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
             { label: '(−) CMV — Custo Mercadoria', valor: -total_compras },
             { label: '(=) Lucro Bruto', valor: lucro_bruto, color: 'var(--accent2)' },
             { label: '(−) Despesas Operacionais', valor: -total_despesas },
-            { label: '(−) Impostos Simples', valor: -imposto },
+            { label: `(−) Impostos (${ehPresumido ? 'Presumido' : ehReal ? 'Lucro Real' : 'Simples'})`, valor: -imposto },
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
               <span style={{ color: 'var(--muted)' }}>{r.label}</span>
