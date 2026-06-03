@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { calcularSimples, calcularLucroPresumido } from '@/lib/crossref'
 import type { Cliente, Compra, Despesa, NotaFiscal, BancoLancamento } from '@/lib/supabase/types'
-import { AlertBar, Card, CardTitle, KpiCard, Tag, brl, pct } from '@/components/ui'
+import { AlertBar, Card, CardTitle, KpiCard, Tag, brl, brlC, pct } from '@/components/ui'
 import { ehVenda, ehRemessa, ehRetorno, ehDevolucao } from '@/lib/cfop'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void; cliente: Cliente }
@@ -144,23 +144,23 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
-        <KpiCard label="Faturamento Real" value={brl(faturamento_nf)}
+        <KpiCard label="Faturamento Real" value={brlC(faturamento_nf)}
           delta={
             (total_remessas + total_retornos) > 0
-              ? `−${brl(total_retornos)} retornos · −${brl(total_remessas)} rem. excl.`
+              ? `−${brlC(total_retornos)} retornos · −${brlC(total_remessas)} rem. excl.`
               : `${notasVenda.length} NFs de venda`
           }
           deltaType={(total_remessas + total_retornos) > 0 ? 'warn' : undefined}
           topColor="var(--accent)" />
-        <KpiCard label="Entradas no Banco" value={brl(entradas_banco)}
-          delta={divergencia_banco_nf > 0 ? `⚠ ${brl(divergencia_banco_nf)} sem NF` : '✓ Conciliado'}
+        <KpiCard label="Entradas no Banco" value={brlC(entradas_banco)}
+          delta={divergencia_banco_nf > 0 ? `⚠ ${brlC(divergencia_banco_nf)} sem NF` : '✓ Conciliado'}
           deltaType={divergencia_banco_nf > 0 ? 'warn' : 'up'} topColor="var(--green)" />
-        <KpiCard label={usando_sim ? 'CMV (simulação)' : 'Compras / CMV'} value={brl(cmv_simulado)}
+        <KpiCard label={usando_sim ? 'CMV (simulação)' : 'Compras / CMV'} value={brlC(cmv_simulado)}
           delta={usando_sim
-            ? `Est.ini ${brl(estoqueIni)} · Est.fin ${brl(estoqueFin)}`
-            : compras_sem_nf > 0 ? `▼ ${brl(compras_sem_nf)} sem nota` : '✓ Todas com NF'}
+            ? `Est.ini ${brlC(estoqueIni)} · Est.fin ${brlC(estoqueFin)}`
+            : compras_sem_nf > 0 ? `▼ ${brlC(compras_sem_nf)} sem nota` : '✓ Todas com NF'}
           deltaType={usando_sim ? 'warn' : compras_sem_nf > 0 ? 'down' : 'up'} topColor="var(--red)" />
-        <KpiCard label="Imposto Estimado" value={brl(imposto)}
+        <KpiCard label="Imposto Estimado" value={brlC(imposto)}
           delta={faturamento_nf > 0 ? `${pct(aliquotaImposto)} · ${ehPresumido ? 'Presumido' : ehReal ? 'Lucro Real' : 'Simples'}` : '—'}
           topColor="var(--gold)" />
       </div>
@@ -267,12 +267,12 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
           ].map(r => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)', fontSize: 13 }}>
               <span style={{ color: 'var(--muted)' }}>{r.label}</span>
-              <span style={{ fontWeight: 700, color: r.color }}>{brl(Math.abs(r.valor))}</span>
+              <span style={{ fontWeight: 700, color: r.color }}>{brlC(Math.abs(r.valor))}</span>
             </div>
           ))}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0 0', borderTop: '2px solid var(--accent)', marginTop: 4 }}>
             <span style={{ fontWeight: 700 }}>Resultado Líquido Estimado</span>
-            <span style={{ fontWeight: 700, fontSize: 16, color: resultado_liq >= 0 ? 'var(--green)' : 'var(--red)' }}>{brl(resultado_liq)}</span>
+            <span style={{ fontWeight: 700, fontSize: 16, color: resultado_liq >= 0 ? 'var(--green)' : 'var(--red)' }}>{brlC(resultado_liq)}</span>
           </div>
           <div style={{ marginTop: 12, fontSize: 11, color: 'var(--muted)', background: 'var(--surface2)', padding: '10px 12px', borderRadius: 8 }}>
             {faturamento_nf > 0

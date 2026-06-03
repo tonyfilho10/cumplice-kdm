@@ -296,6 +296,12 @@ export function brl(valor: number | null | undefined): string {
   return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
+/** Formata com centavos (R$ 1.234.567,89) */
+export function brlC(valor: number | null | undefined): string {
+  if (valor == null || !isFinite(valor) || isNaN(valor)) return 'R$ —'
+  return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export function pct(valor: number | null | undefined, casas = 1): string {
   if (valor == null || !isFinite(valor) || isNaN(valor)) return '—%'
   return `${valor.toFixed(casas)}%`
