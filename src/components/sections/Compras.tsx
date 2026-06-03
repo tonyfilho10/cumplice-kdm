@@ -79,45 +79,50 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     setExcluindo(null); await carregar(); onRecarregar(); setToast('Compra excluída!')
   }
 
+  const [progressoImport, setProgressoImport] = useState({ atual: 0, total: 0 })
+
   async function importarXML(files: File[]) {
     setImportando(true)
+    setProgressoImport({ atual: 0, total: files.length })
+
     const { sucesso, erros } = await parseMultiplosXML(files)
 
     let inseridos = 0
     const errosInsert: string[] = []
     const avisos: string[] = []
+    let processados = 0
 
-    for (const nfe of sucesso) {
-      // NFS-e são notas de serviço — pertencem a Despesas, não Compras
-      if (nfe.formato === 'nfse') {
-        avisos.push(`NFS-e ${nfe.numero || 'sem número'} é nota de serviço — registre em Despesas`)
-        continue
-      }
-      // Qualquer NF-e importada aqui é tratada como compra
-      // (o usuário decide o que importar — não inferimos pelo CFOP ou tpNF)
-      if (!nfe.data_emissao) {
-        errosInsert.push(`NF ${nfe.numero}: data de emissão inválida`)
-        continue
-      }
+    // Processa em lotes de 5 em paralelo
+    const LOTE = 5
+    const nfes = sucesso.filter(nfe => {
+      if (nfe.formato === 'nfse') { avisos.push(`NFS-e ${nfe.numero || 'sem número'} → registre em Despesas`); return false }
+      if (!nfe.data_emissao) { errosInsert.push(`NF ${nfe.numero}: data inválida`); return false }
+      return true
+    })
 
-      const { error } = await supabase.from('compras').insert({
-        cliente_id: clienteId,
-        periodo: nfe.data_emissao.substring(0, 7), // período real da NF
-        data: nfe.data_emissao,
-        fornecedor: nfe.razao_emitente || 'Fornecedor XML',
-        cnpj_fornecedor: nfe.cnpj_emitente || null,
-        valor: nfe.valor_total,
-        nf_entrada: nfe.numero,
-        categoria: 'Mercadoria para Revenda',
-        pagamento: 'Importado XML',
-      })
+    for (let i = 0; i < nfes.length; i += LOTE) {
+      const lote = nfes.slice(i, i + LOTE)
+      await Promise.all(lote.map(async (nfe) => {
+        const { error } = await supabase.from('compras').insert({
+          cliente_id: clienteId,
+          periodo: nfe.data_emissao.substring(0, 7),
+          data: nfe.data_emissao,
+          fornecedor: nfe.razao_emitente || 'Fornecedor XML',
+          cnpj_fornecedor: nfe.cnpj_emitente || null,
+          valor: nfe.valor_total,
+          nf_entrada: nfe.numero,
+          categoria: 'Mercadoria para Revenda',
+          pagamento: 'Importado XML',
+        })
 
-      if (error) {
-        errosInsert.push(`NF ${nfe.numero}: ${error.message}`)
-      } else {
-        inseridos++
-      }
+        if (error) errosInsert.push(`NF ${nfe.numero}: ${error.message}`)
+        else inseridos++
+      }))
+      processados += lote.length
+      setProgressoImport({ atual: processados, total: nfes.length })
     }
+
+    setProgressoImport({ atual: 0, total: 0 })
 
     // Recarrega diretamente do banco — sem depender de closure
     const { data: fresco } = await supabase
@@ -180,7 +185,12 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
         </div>
         <div style={{ marginTop: 14 }}>
           <UploadZone icon="📂" label="Importar XMLs de NF-e de Entrada"
-            sub={importando ? 'Importando...' : 'Arraste ou clique — XML'}
+            sub={
+              importando && progressoImport.total > 0
+                ? `Processando ${progressoImport.atual}/${progressoImport.total} arquivos...`
+                : importando ? 'Preparando importação...'
+                : 'Arraste ou clique — XML (múltiplos arquivos)'
+            }
             onFiles={importarXML} accept=".xml" />
         </div>
       </Card>

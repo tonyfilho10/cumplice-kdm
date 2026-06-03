@@ -144,7 +144,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
         </div>
         <div style={{ marginTop: 14 }}>
           <UploadZone icon="🧾" label="Importar XMLs de NF-e Emitidas"
-            sub={importando ? 'Importando...' : 'Exportado do SEFAZ ou ERP — XML'}
+            sub={importando ? 'Importando em lotes...' : 'Exportado do SEFAZ ou ERP — XML (múltiplos)'}
             onFiles={importarXML} accept=".xml" />
         </div>
       </Card>

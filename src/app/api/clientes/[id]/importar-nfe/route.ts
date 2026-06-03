@@ -5,12 +5,14 @@ import { guardCliente } from '@/lib/supabase/auth-guard'
 import { verificarPeriodoAberto } from '@/lib/supabase/periodo-guard'
 import { conciliarPeriodo } from '@/lib/conciliar'
 
+// Aumenta limite de body para importação em lote
+export const maxDuration = 60 // 60s no Netlify/Vercel
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: clienteId } = await params
-
   const guard = await guardCliente(clienteId)
   if (!guard.ok) return guard.response
 
@@ -19,73 +21,67 @@ export async function POST(
     const files = formData.getAll('files') as File[]
     const periodo = formData.get('periodo') as string
 
-    // Verifica se período está fechado (usa o período de referência da UI)
+    if (!periodo) return NextResponse.json({ erro: 'Período obrigatório' }, { status: 400 })
+
     const periodoGuard = await verificarPeriodoAberto(clienteId, periodo)
     if (!periodoGuard.ok) return periodoGuard.response
 
-    // periodo da UI é apenas fallback — a NF usa sua data de emissão real
     const importados: string[] = []
     const erros: { arquivo: string; erro: string }[] = []
     const duplicados: string[] = []
 
-    for (const file of files) {
-      const content = await file.text()
-      const nfe = await parseNFeXML(content)
+    // ── Processa em lotes de 10 em paralelo ───────────────────────────────
+    const LOTE = 10
+    for (let i = 0; i < files.length; i += LOTE) {
+      const lote = files.slice(i, i + LOTE)
 
-      if (nfe.erro) { erros.push({ arquivo: file.name, erro: nfe.erro }); continue }
+      await Promise.all(lote.map(async (file) => {
+        const content = await file.text()
+        const nfe = await parseNFeXML(content)
 
-      // Deriva período da DATA DA NF, não do período da UI
-      // Ex: NF de 15/04/2026 → periodo = "2026-04"  independente do que está na UI
-      const periodoNF = nfe.data_emissao?.substring(0, 7) || periodo
-      if (!periodoNF) { erros.push({ arquivo: file.name, erro: 'Data de emissão inválida' }); continue }
+        if (nfe.erro) { erros.push({ arquivo: file.name, erro: nfe.erro }); return }
 
-      // Verifica duplicata: 1) pela chave de acesso (NF-e), 2) por número+cliente (fallback NFS-e)
-      if (nfe.chave_acesso) {
-        const existente = await prisma.notaFiscal.findUnique({
-          where: { chave_acesso: nfe.chave_acesso },
-          select: { id: true },
-        })
-        if (existente) { duplicados.push(`NF ${nfe.numero} (chave duplicada)`); continue }
-      } else if (nfe.numero && nfe.cnpj_emitente) {
-        // Para NFS-e sem chave: verifica número + CNPJ emitente + cliente
-        const existente = await prisma.notaFiscal.findFirst({
-          where: {
+        const periodoNF = nfe.data_emissao?.substring(0, 7) || periodo
+        if (!periodoNF) { erros.push({ arquivo: file.name, erro: 'Data de emissão inválida' }); return }
+
+        if (nfe.chave_acesso) {
+          const existente = await prisma.notaFiscal.findUnique({
+            where: { chave_acesso: nfe.chave_acesso },
+            select: { id: true },
+          })
+          if (existente) { duplicados.push(`NF ${nfe.numero}`); return }
+        } else if (nfe.numero && nfe.cnpj_emitente) {
+          const existente = await prisma.notaFiscal.findFirst({
+            where: { cliente_id: clienteId, numero: nfe.numero, chave_acesso: null },
+            select: { id: true },
+          })
+          if (existente) { duplicados.push(`NF ${nfe.numero} (número duplicado)`); return }
+        }
+
+        await prisma.notaFiscal.create({
+          data: {
             cliente_id: clienteId,
+            periodo: periodoNF,
+            data: new Date(nfe.data_emissao),
             numero: nfe.numero,
-            // verifica pelo CNPJ emitente guardado na chave ou no número
-            chave_acesso: null,
+            chave_acesso: nfe.chave_acesso || null,
+            cliente_nf: nfe.razao_destinatario || 'Consumidor Final',
+            cfop: nfe.cfop, valor: nfe.valor_total, conciliada: false,
           },
-          select: { id: true },
         })
-        if (existente) { duplicados.push(`NF ${nfe.numero} (número duplicado)`); continue }
-      }
-
-      const label = nfe.formato === 'nfse' ? 'NFS-e' : 'NF-e'
-      await prisma.notaFiscal.create({
-        data: {
-          cliente_id: clienteId,
-          periodo: periodoNF,           // ← período real da NF
-          data: new Date(nfe.data_emissao),
-          numero: nfe.numero,
-          chave_acesso: nfe.chave_acesso || null,
-          cliente_nf: nfe.razao_destinatario || 'Consumidor Final',
-          cfop: nfe.cfop, valor: nfe.valor_total, conciliada: false,
-        },
-      })
-      const aviso = periodoNF !== periodo ? ` → alocado em ${periodoNF}` : ''
-      importados.push(`${label} ${nfe.numero}${aviso} — R$ ${nfe.valor_total.toLocaleString('pt-BR')}`)
+        const label = nfe.formato === 'nfse' ? 'NFS-e' : 'NF-e'
+        const aviso = periodoNF !== periodo ? ` → alocado em ${periodoNF}` : ''
+        importados.push(`${label} ${nfe.numero}${aviso} — R$ ${nfe.valor_total.toLocaleString('pt-BR')}`)
+      }))
     }
 
-    // ── Conciliação automática para cada período com NFs novas ─────────────
-    // Coleta períodos distintos das NFs importadas
+    // Concilia períodos das NFs importadas
     const periodosImportados = [...new Set(importados.map(s => {
       const m = s.match(/→ alocado em (\d{4}-\d{2})/)
       return m ? m[1] : periodo
     }))]
     for (const p of periodosImportados) {
-      try {
-        await conciliarPeriodo(clienteId, p) // chamada direta, sem HTTP interno
-      } catch { /* não bloqueia se falhar */ }
+      try { await conciliarPeriodo(clienteId, p) } catch { }
     }
 
     return NextResponse.json({ importados, erros, duplicados })

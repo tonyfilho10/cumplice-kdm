@@ -30,10 +30,10 @@ const nextConfig: NextConfig = {
     ]
   },
 
-  // Limita tamanho de upload de arquivos (10MB para XMLs/OFX)
+  // Limite de upload — 50MB para importação em lote de XMLs
   experimental: {
     serverActions: {
-      bodySizeLimit: '10mb',
+      bodySizeLimit: '50mb',
     },
   },
 }
