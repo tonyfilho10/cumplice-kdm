@@ -57,9 +57,10 @@ const CFOP_MAP: Record<string, CFOPInfo> = {
   '6908': { tipo: 'retorno_remessa', descricao: 'Retorno de mercadoria depositada',  badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
   '6923': { tipo: 'retorno_remessa', descricao: 'Retorno de depósito fechado',       badge: 'Retorno',     cor: 'text-blue-400',   impacto: 'neutro' },
 
-  // ── Industrialização ─────────────────────────────────────────────────────
-  '5124': { tipo: 'industrializacao', descricao: 'Industrialização efetuada (entrada)', badge: 'Indust.', cor: 'text-purple-400', impacto: 'neutro' },
-  '6124': { tipo: 'industrializacao', descricao: 'Industrialização efetuada p/ outro estabelecimento', badge: 'Indust.', cor: 'text-purple-400', impacto: 'neutro' },
+  // ── Industrialização — é RECEITA de serviço prestado ────────────────────
+  // KDM recebe matéria-prima, industrializa e devolve cobrando pelo serviço
+  '5124': { tipo: 'venda', descricao: 'Industrialização efetuada p/ terceiros (estadual)', badge: 'Serviço', cor: 'text-green-400', impacto: 'positivo' },
+  '6124': { tipo: 'venda', descricao: 'Industrialização efetuada p/ terceiros (interestadual)', badge: 'Serviço', cor: 'text-green-400', impacto: 'positivo' },
 
   // ── Entradas de remessa (compras de terceiros) ────────────────────────────
   '1901': { tipo: 'entrada_remessa', descricao: 'Entrada p/ industrialização por encomenda', badge: 'Ent.Rem.', cor: 'text-cyan-400', impacto: 'neutro' },
