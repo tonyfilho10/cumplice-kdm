@@ -17,10 +17,10 @@ export default function Cruzamento({ clienteId, periodo, refresh }: Props) {
   const carregar = useCallback(async () => {
     setCarregando(true)
     const [{ data: notas }, { data: compras }, { data: despesas }, { data: banco }, { data: thresh }] = await Promise.all([
-      supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
-      supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo),
+      supabase.from('notas_fiscais').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+      supabase.from('compras').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+      supabase.from('despesas').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
+      supabase.from('banco_lancamentos').select('*').eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false),
       supabase.from('thresholds').select('*').eq('cliente_id', clienteId).maybeSingle(),
     ])
 

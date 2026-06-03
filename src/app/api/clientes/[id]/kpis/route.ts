@@ -16,8 +16,8 @@ export async function GET(
 
   try {
     const [notas, compras, despesas, banco, thresh] = await Promise.all([
-      prisma.notaFiscal.findMany({ where: { cliente_id: clienteId, periodo } }),
-      prisma.compra.findMany({ where: { cliente_id: clienteId, periodo } }),
+      prisma.notaFiscal.findMany({ where: { cliente_id: clienteId, periodo, cancelada: false } }),
+      prisma.compra.findMany({ where: { cliente_id: clienteId, periodo, cancelada: false } }),
       prisma.despesa.findMany({ where: { cliente_id: clienteId, periodo } }),
       prisma.bancoLancamento.findMany({ where: { cliente_id: clienteId, periodo } }),
       prisma.threshold.findUnique({ where: { cliente_id: clienteId } }),

@@ -33,7 +33,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
 
   const carregar = useCallback(async () => {
     const { data: rows } = await supabase.from('compras').select('*')
-      .eq('cliente_id', clienteId).eq('periodo', periodo).order('data', { ascending: false })
+      .eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false).order('data', { ascending: false })
     // status é coluna gerada que não existe após prisma db push — deriva do nf_entrada
     const comStatus = (rows || []).map(r => ({
       ...r,
@@ -140,8 +140,16 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     setImportando(false)
   }
 
+  const [busca, setBusca] = useState('')
+
   const total = compras.reduce((s, c) => s + c.valor, 0)
   const semNF = compras.filter(c => c.status === 'sem_nf').length
+  const visiveis = busca.trim()
+    ? compras.filter(c =>
+        c.fornecedor.toLowerCase().includes(busca.toLowerCase()) ||
+        (c.nf_entrada || '').toLowerCase().includes(busca.toLowerCase())
+      )
+    : compras
 
   return (
     <div>
@@ -178,8 +186,14 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
         <CardTitle sub={`Total: ${brl(total)} · ${compras.length} lançamentos${semNF > 0 ? ` · ${semNF} sem NF ⚠` : ''}`}>
           Compras do Mês
         </CardTitle>
+        {/* Barra de busca */}
+        <div className="relative mb-3">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por fornecedor ou número da NF..."
+            className="w-full h-8 rounded-md border border-border bg-secondary text-foreground text-xs pl-8 pr-3 focus:outline-none focus:ring-1 focus:ring-ring" />
+        </div>
         <Table headers={['Data', 'Fornecedor', 'Categoria', 'Valor', 'NF Entrada', 'Pagamento', 'Status', '']}>
-          {compras.map(c => (
+          {visiveis.map(c => (
             <Tr key={c.id}>
               <Td>{fmtData(c.data)}</Td>
               <Td>{c.fornecedor}</Td>
@@ -192,7 +206,11 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
             </Tr>
           ))}
         </Table>
-        {compras.length === 0 && <div style={{ textAlign: 'center', padding: 32, color: 'var(--muted)' }}>Nenhuma compra registrada</div>}
+        {visiveis.length === 0 && (
+          <p className="text-center py-8 text-muted-foreground text-sm">
+            {busca ? `Nenhuma compra encontrada para "${busca}"` : 'Nenhuma compra registrada'}
+          </p>
+        )}
       </Card>
 
       {/* Modal de Edição */}
