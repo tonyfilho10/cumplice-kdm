@@ -115,7 +115,7 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
       const lote = nfes.slice(i, i + LOTE)
       await Promise.all(lote.map(async (nfe) => {
         const cfopEntrada = toEntryCFOP(nfe.cfop)
-        const { error } = await supabase.from('compras').insert({
+        const base = {
           id: crypto.randomUUID(),
           cliente_id: clienteId,
           periodo: nfe.data_emissao.substring(0, 7),
@@ -124,10 +124,17 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
           cnpj_fornecedor: nfe.cnpj_emitente || null,
           valor: nfe.valor_total,
           nf_entrada: nfe.numero,
-          cfop: cfopEntrada,
           categoria: 'Mercadoria para Revenda',
           pagamento: 'Importado XML',
-        })
+        }
+
+        let { error } = await supabase.from('compras').insert({ ...base, cfop: cfopEntrada })
+
+        // Se a coluna cfop ainda não existe no banco, insere sem ela
+        if (error?.message?.includes('cfop')) {
+          const r = await supabase.from('compras').insert(base)
+          error = r.error
+        }
 
         if (error) errosInsert.push(`NF ${nfe.numero}: ${error.message}`)
         else inseridos++
