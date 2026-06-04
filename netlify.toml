@@ -1,5 +1,5 @@
 [build]
-  command = "npm run build"
+  command = "npx prisma db push --accept-data-loss && npm run build"
   publish = ".next"
 
 [build.environment]
