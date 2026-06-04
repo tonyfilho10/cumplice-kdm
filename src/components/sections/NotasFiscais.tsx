@@ -277,7 +277,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
       <Card>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <CardTitle sub={`Total: ${brl(total)} · ${notas.length} notas`}>NFs Emitidas no Mês</CardTitle>
-          {notasFaltantes.length > 0 && (
+          {false && notasFaltantes.length > 0 && (
             <Btn variant="ghost" onClick={() => setMostrarFaltantes(m => !m)}
               style={{ fontSize: 11, gap: 6, color: 'var(--color-yellow-400)' }}>
               ⚠️ {notasFaltantes.length} NF(s) faltando
