@@ -259,12 +259,18 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por fornecedor ou número da NF..."
             className="w-full h-8 rounded-md border border-border bg-secondary text-foreground text-xs pl-8 pr-3 focus:outline-none focus:ring-1 focus:ring-ring" />
         </div>
-        <Table headers={['Data', 'Fornecedor', 'Categoria', 'Valor', 'NF Entrada', 'Pagamento', 'Tipo', '']}>
+        <Table headers={['Data', 'Fornecedor', 'Categoria', 'CFOP', 'Valor', 'NF Entrada', 'Pagamento', 'Tipo', '']}>
           {visiveis.map(c => (
             <Tr key={c.id}>
               <Td>{fmtData(c.data)}</Td>
               <Td>{c.fornecedor}</Td>
               <Td>{c.categoria}</Td>
+              <Td mono>
+                {c.cfop
+                  ? <span className={`text-xs font-mono ${c.cfop.startsWith('12') || c.cfop.startsWith('22') ? 'text-red-400 font-bold' : 'text-muted-foreground'}`}>{c.cfop}</span>
+                  : <span className="text-muted-foreground text-xs">—</span>
+                }
+              </Td>
               <Td>
                 <span style={c.devolucao ? { color: 'var(--color-red-400)', textDecoration: 'line-through' } : undefined}>
                   {brl(c.valor)}
