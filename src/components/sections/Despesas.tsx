@@ -44,21 +44,21 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
   useEffect(() => { carregar() }, [carregar, refresh])
 
   // ── Conferência banco × despesas ──────────────────────────────────────
-  type SaidaBanco = { id: string; descricao: string; valor: number; categoria: string | null; data: string }
+  type SaidaBanco = { id: string; descricao: string; valor: number; categoria: string | null; data: string; conta: string | null }
   const [saidasBanco, setSaidasBanco] = useState<SaidaBanco[]>([])
   const [comprasPeriodo, setComprasPeriodo] = useState<{ valor: number; data: string }[]>([])
   const [mostrarConferencia, setMostrarConferencia] = useState(false)
 
   // Categorias que representam saídas NÃO-despesa (já identificadas)
   const CATS_NAO_DESPESA = new Set([
-    'Pagamento Fornecedor', 'Transferência', 'Aplicação/Investimento',
-    'Retirada/Pró-Labore', 'Devolução a Cliente', 'Empréstimo/Aporte',
+    'Pagamento Fornecedor', 'Folha de Pagamento', 'Transferência',
+    'Aplicação/Investimento', 'Retirada/Pró-Labore', 'Devolução a Cliente', 'Empréstimo/Aporte',
   ])
 
   async function carregarConferencia() {
     const [{ data: rows }, { data: compras }] = await Promise.all([
       supabase.from('banco_lancamentos')
-        .select('id, descricao, valor, categoria, data')
+        .select('id, descricao, valor, categoria, data, conta')
         .eq('cliente_id', clienteId).eq('periodo', periodo)
         .eq('tipo', 'saida').gt('valor', 0).limit(50000),
       supabase.from('compras')
@@ -68,6 +68,34 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
     setSaidasBanco((rows || []) as SaidaBanco[])
     setComprasPeriodo((compras || []) as { valor: number; data: string }[])
     setMostrarConferencia(true)
+  }
+
+  async function preencherContasBanco() {
+    if (saidasBanco.length === 0) return
+    const TOLER = 0.02
+    const DIAS  = 3
+    const diffDias = (a: string, b: string) =>
+      Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000
+
+    let atualizados = 0
+    for (const d of despesas) {
+      if ((d as any).conta_banco || !d.pago_banco) continue
+      const match = saidasBanco.find(s =>
+        s.conta &&
+        Math.abs(s.valor - d.valor) / Math.max(s.valor, d.valor) <= TOLER &&
+        diffDias(s.data, d.data) <= DIAS
+      )
+      if (match?.conta) {
+        await supabase.from('despesas').update({ conta_banco: match.conta }).eq('id', d.id)
+        atualizados++
+      }
+    }
+    if (atualizados > 0) {
+      await carregar()
+      setToast(`${atualizados} despesa(s) atualizadas com o banco correto`)
+    } else {
+      setToast('Nenhuma despesa sem conta encontrada para atualizar')
+    }
   }
 
   async function classificarSaida(id: string, categoria: string) {
@@ -98,6 +126,7 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
       categoria: saida.categoria || 'Outro',
       pago_banco: true,
       dedutivel: 'sim',
+      conta_banco: saida.conta || null,
     })
     if (error) { setToast(`Erro: ${error.message}`); return }
     await Promise.all([carregar(), carregarConferencia()])
@@ -188,10 +217,25 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
               )}
             </p>
           </div>
-          <button onClick={carregarConferencia}
-            className="text-xs text-primary border border-primary/30 bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/15 transition-colors">
-            {mostrarConferencia ? '↻ Atualizar' : '🔍 Conferir'}
-          </button>
+          <div className="flex gap-2">
+            {mostrarConferencia && (
+              <>
+                <button onClick={preencherContasBanco}
+                  className="text-xs text-muted-foreground border border-border px-3 py-1.5 rounded-lg hover:bg-secondary transition-colors"
+                  title="Preencher banco nas despesas sem conta">
+                  🏦 Preencher banco
+                </button>
+                <button onClick={() => setMostrarConferencia(false)}
+                  className="text-xs text-muted-foreground border border-border px-3 py-1.5 rounded-lg hover:bg-secondary transition-colors">
+                  ▲ Retrair
+                </button>
+              </>
+            )}
+            <button onClick={carregarConferencia}
+              className="text-xs text-primary border border-primary/30 bg-primary/5 px-3 py-1.5 rounded-lg hover:bg-primary/15 transition-colors">
+              {mostrarConferencia ? '↻ Atualizar' : '🔍 Conferir'}
+            </button>
+          </div>
         </div>
 
         {mostrarConferencia && saidasBanco.length > 0 && (() => {
@@ -261,7 +305,7 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
                           <span className="text-red-400 font-semibold shrink-0">{brl(l.valor)}</span>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {(['Pagamento Fornecedor','Transferência','Imposto/Tributo','Retirada/Pró-Labore'] as const).map(cat => (
+                          {(['Pagamento Fornecedor','Folha de Pagamento','Transferência','Imposto/Tributo','Retirada/Pró-Labore'] as const).map(cat => (
                             <button key={cat} onClick={() => classificarSaida(l.id, cat)}
                               className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-card hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-colors text-muted-foreground">
                               {cat}
