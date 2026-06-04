@@ -45,5 +45,4 @@ next-env.d.ts
 # Scripts de desenvolvimento (contêm lógica de seed, não para produção)
 /scripts/*.ts
 
-# Prisma config local
-prisma.config.ts
+# prisma.config.ts é commitado (usa apenas variáveis de ambiente, sem credenciais)
