@@ -293,7 +293,7 @@ export function fmtData(data: string | null | undefined): string {
 
 export function brl(valor: number | null | undefined): string {
   if (valor == null || !isFinite(valor) || isNaN(valor)) return 'R$ —'
-  return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  return `R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 /** Formata com centavos (R$ 1.234.567,89) */
