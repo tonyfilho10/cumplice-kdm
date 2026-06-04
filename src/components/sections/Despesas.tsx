@@ -44,19 +44,54 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
   useEffect(() => { carregar() }, [carregar, refresh])
 
   // ── Conferência banco × despesas ──────────────────────────────────────
-  const [saidasBanco, setSaidasBanco] = useState<{ descricao: string; valor: number; categoria: string | null; data: string }[]>([])
+  type SaidaBanco = { id: string; descricao: string; valor: number; categoria: string | null; data: string }
+  const [saidasBanco, setSaidasBanco] = useState<SaidaBanco[]>([])
+  const [comprasPeriodo, setComprasPeriodo] = useState<{ valor: number; data: string }[]>([])
   const [mostrarConferencia, setMostrarConferencia] = useState(false)
 
+  // Categorias que representam saídas NÃO-despesa (já identificadas)
+  const CATS_NAO_DESPESA = new Set([
+    'Pagamento Fornecedor', 'Transferência', 'Aplicação/Investimento',
+    'Retirada/Pró-Labore', 'Devolução a Cliente', 'Empréstimo/Aporte',
+  ])
+
   async function carregarConferencia() {
-    const { data: rows } = await supabase
-      .from('banco_lancamentos')
-      .select('descricao, valor, categoria, data')
-      .eq('cliente_id', clienteId)
-      .eq('periodo', periodo)
-      .eq('tipo', 'saida')
-      .gt('valor', 0)
-    setSaidasBanco((rows || []) as typeof saidasBanco)
+    const [{ data: rows }, { data: compras }] = await Promise.all([
+      supabase.from('banco_lancamentos')
+        .select('id, descricao, valor, categoria, data')
+        .eq('cliente_id', clienteId).eq('periodo', periodo)
+        .eq('tipo', 'saida').gt('valor', 0).limit(50000),
+      supabase.from('compras')
+        .select('valor, data')
+        .eq('cliente_id', clienteId).eq('periodo', periodo).eq('cancelada', false).limit(50000),
+    ])
+    setSaidasBanco((rows || []) as SaidaBanco[])
+    setComprasPeriodo((compras || []) as { valor: number; data: string }[])
     setMostrarConferencia(true)
+  }
+
+  async function classificarSaida(id: string, categoria: string) {
+    await supabase.from('banco_lancamentos').update({ categoria }).eq('id', id)
+    setSaidasBanco(prev => prev.map(s => s.id === id ? { ...s, categoria } : s))
+    setToast(`Saída classificada como: ${categoria}`)
+  }
+
+  async function criarDespesaDaBanco(saida: SaidaBanco) {
+    const { error } = await supabase.from('despesas').insert({
+      id: crypto.randomUUID(),
+      cliente_id: clienteId,
+      periodo: saida.data.substring(0, 7),
+      data: saida.data,
+      descricao: saida.descricao,
+      valor: saida.valor,
+      categoria: saida.categoria || 'Outro',
+      pago_banco: true,
+      dedutivel: 'sim',
+    })
+    if (error) { setToast(`Erro: ${error.message}`); return }
+    await Promise.all([carregar(), carregarConferencia()])
+    onRecarregar()
+    setToast('Despesa criada!')
   }
 
   async function adicionar() {
@@ -149,12 +184,37 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
         </div>
 
         {mostrarConferencia && saidasBanco.length > 0 && (() => {
+          const TOLER = 0.02
+          const DIAS  = 3
+          const diffDias = (a: string, b: string) =>
+            Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000
+
+          // Saída bate com despesa? (valor ±2%, data ±3 dias, pago_banco=true)
+          const matchDespesa = (s: SaidaBanco) =>
+            despesas.some(d => d.pago_banco &&
+              Math.abs(s.valor - d.valor) / Math.max(s.valor, d.valor) <= TOLER &&
+              diffDias(s.data, d.data) <= DIAS)
+
+          // Saída bate com uma compra já registrada? (valor ±2%, data ±3 dias)
+          const matchCompra = (s: SaidaBanco) =>
+            comprasPeriodo.some(c =>
+              Math.abs(s.valor - c.valor) / Math.max(s.valor, c.valor) <= TOLER &&
+              diffDias(s.data, c.data) <= DIAS)
+
           const totalBanco = saidasBanco.reduce((s,l)=>s+l.valor,0)
           const totalDesp  = total
           const diff       = totalBanco - totalDesp
-          const despHash   = new Set(despesas.map(d => `${d.data}|${d.valor}|${d.descricao}`))
-          const semDespesa = saidasBanco.filter(l => !despHash.has(`${l.data}|${l.valor}|${l.descricao}`))
-          const semBanco   = despesas.filter(d => !saidasBanco.some(l => l.data === d.data && l.valor === d.valor && l.descricao === d.descricao))
+
+          // Pendentes: não classificadas, não batem com despesa, não batem com compra
+          const semDespesa = saidasBanco.filter(l =>
+            !CATS_NAO_DESPESA.has(l.categoria || '') &&
+            !matchDespesa(l) &&
+            !matchCompra(l)
+          )
+
+          const semBanco = despesas.filter(d => d.pago_banco &&
+            !saidasBanco.some(l => matchDespesa(l))
+          )
 
           return (
             <div className="mt-4 space-y-3">
@@ -177,17 +237,30 @@ export default function Despesas({ clienteId, periodo, refresh, onRecarregar }: 
                 </div>
               </div>
 
-              {/* Saídas sem despesa */}
+              {/* Saídas sem despesa correspondente */}
               {semDespesa.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-orange-400 mb-2">⚠️ {semDespesa.length} saída(s) do banco sem despesa correspondente:</p>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {semDespesa.map((l, i) => (
-                      <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-secondary">
-                        <span className="text-muted-foreground">{l.data}</span>
-                        <span className="flex-1 mx-2 truncate text-foreground">{l.descricao}</span>
-                        <span className="text-xs bg-secondary border border-border px-1.5 py-0.5 rounded text-muted-foreground shrink-0">{l.categoria || '—'}</span>
-                        <span className="text-red-400 font-semibold ml-2 shrink-0">{brl(l.valor)}</span>
+                  <p className="text-xs font-semibold text-orange-400 mb-2">⚠️ {semDespesa.length} saída(s) a identificar:</p>
+                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                    {semDespesa.map((l) => (
+                      <div key={l.id} className="rounded-lg bg-secondary border border-border p-2 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground shrink-0">{fmtData(l.data)}</span>
+                          <span className="flex-1 mx-2 truncate text-foreground">{l.descricao}</span>
+                          <span className="text-red-400 font-semibold shrink-0">{brl(l.valor)}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {(['Pagamento Fornecedor','Transferência','Imposto/Tributo','Retirada/Pró-Labore'] as const).map(cat => (
+                            <button key={cat} onClick={() => classificarSaida(l.id, cat)}
+                              className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-card hover:bg-primary/10 hover:border-primary/40 hover:text-primary transition-colors text-muted-foreground">
+                              {cat}
+                            </button>
+                          ))}
+                          <button onClick={() => criarDespesaDaBanco(l)}
+                            className="text-[10px] px-2 py-0.5 rounded-full border border-green-500/40 bg-green-500/10 hover:bg-green-500/20 text-green-400 transition-colors">
+                            + Criar Despesa
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
