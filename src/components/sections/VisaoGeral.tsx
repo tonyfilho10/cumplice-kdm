@@ -83,9 +83,10 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
 
   // Identifica devolução: campo devolucao=true (toggle manual) OU cfop 12xx/22xx (detecção automática)
   const ehDev = (c: Compra) => !!c.devolucao || ehDevolucaoEntrada(c.cfop)
-  const compras_brutas     = compras.filter(c => !ehDev(c)).reduce((s, c) => s + c.valor, 0)
-  const devolucoes_entrada = compras.filter(c => ehDev(c)).reduce((s, c) => s + c.valor, 0)
-  const total_compras      = compras_brutas - devolucoes_entrada
+  const total_bruto_compras = compras.reduce((s, c) => s + c.valor, 0)
+  const devolucoes_entrada  = compras.filter(c => ehDev(c)).reduce((s, c) => s + c.valor, 0)
+  const compras_brutas      = total_bruto_compras   // total antes da dedução (para exibição)
+  const total_compras       = total_bruto_compras - devolucoes_entrada
 
   const total_despesas = despesas.reduce((s, d) => s + d.valor, 0)
 
