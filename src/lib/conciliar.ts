@@ -26,7 +26,7 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
 
   const resultado = cruzarDados(clienteId, periodo, adaptBanco, adaptNotas, adaptCompras, adaptDespesas, threshAdapt, adaptSped)
 
-  // Persiste conciliações encontradas
+  // Persiste conciliações encontradas (notas_fiscais)
   let conciliados = 0
   for (const { banco_id, nf_id, diferenca } of resultado.conciliacoes) {
     await Promise.all([
@@ -39,6 +39,16 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
         data: { conciliada: true, banco_lancamento_id: banco_id },
       }).catch(() => {}),
     ])
+    conciliados++
+  }
+
+  // Persiste conciliações via SPED venda (marca lançamento como conciliado)
+  for (const { banco_id, diferenca, via } of resultado.conciliacoesSped) {
+    if (via !== 'venda') continue
+    await prisma.bancoLancamento.update({
+      where: { id: banco_id },
+      data: { status: diferenca === 0 ? 'ok' : 'parcial' },
+    }).catch(() => {})
     conciliados++
   }
 
