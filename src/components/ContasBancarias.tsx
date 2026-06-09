@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Btn, Card, CardTitle, ConfirmDelete, Input, Modal, RowActions, Select, Toast } from '@/components/ui'
+import { Btn, Card, CardTitle, ConfirmDelete, Input, Modal, RowActions, Select, Toast, brl } from '@/components/ui'
 import { Button } from '@/components/ui/button'
-import { Plus, Star, Landmark } from 'lucide-react'
+import { Plus, Star, Landmark, Wallet } from 'lucide-react'
 
 type ContaBancaria = {
   id: string
@@ -16,11 +16,16 @@ type ContaBancaria = {
   numero?: string | null
   principal: boolean
   ativo: boolean
+  saldo_inicial?: number | null
+  saldo_inicial_data?: string | null
 }
+
+type Lancamento = { conta?: string | null; tipo: string; valor: number; data: string }
 
 type Props = {
   clienteId: string
   onContasChange?: (contas: ContaBancaria[]) => void
+  lancamentos?: Lancamento[]
 }
 
 const BANCOS_BR = [
@@ -32,9 +37,10 @@ const BANCOS_BR = [
 const vazio = (clienteId: string): Partial<ContaBancaria> => ({
   cliente_id: clienteId, nome: '', banco: 'Itaú',
   tipo: 'corrente', agencia: '', numero: '', principal: false, ativo: true,
+  saldo_inicial: null, saldo_inicial_data: null,
 })
 
-export default function ContasBancarias({ clienteId, onContasChange }: Props) {
+export default function ContasBancarias({ clienteId, onContasChange, lancamentos = [] }: Props) {
   const supabase = createClient()
   const [contas, setContas] = useState<ContaBancaria[]>([])
   const [toast, setToast] = useState('')
@@ -135,6 +141,8 @@ export default function ContasBancarias({ clienteId, onContasChange }: Props) {
         nome, banco: editando.banco, tipo: editando.tipo,
         agencia: editando.agencia || null, numero: editando.numero || null,
         principal: editando.principal ?? false,
+        saldo_inicial: editando.saldo_inicial != null ? Number(editando.saldo_inicial) : null,
+        saldo_inicial_data: editando.saldo_inicial_data || null,
       }).eq('id', editando.id)
       if (error) { setToast(`Erro: ${error.message}`); setSalvando(false); return }
 
@@ -149,6 +157,8 @@ export default function ContasBancarias({ clienteId, onContasChange }: Props) {
         cliente_id: clienteId, nome, banco: editando.banco, tipo: editando.tipo,
         agencia: editando.agencia || null, numero: editando.numero || null,
         principal: editando.principal ?? false, ativo: true,
+        saldo_inicial: editando.saldo_inicial != null ? Number(editando.saldo_inicial) : null,
+        saldo_inicial_data: editando.saldo_inicial_data || null,
       }).select().single()
       if (error || !nova) { setToast(`Erro: ${error?.message}`); setSalvando(false); return }
 
@@ -223,6 +233,34 @@ export default function ContasBancarias({ clienteId, onContasChange }: Props) {
                     {c.agencia && ` · Ag. ${c.agencia}`}
                     {c.numero && ` · C/C ${c.numero}`}
                   </p>
+                  {c.saldo_inicial != null && (() => {
+                    // Saldo atual = saldo_inicial + movimentos após saldo_inicial_data para esta conta
+                    const dataRef = c.saldo_inicial_data || '1900-01-01'
+                    const movs = lancamentos.filter(l =>
+                      l.conta === c.nome && l.data >= dataRef
+                    )
+                    const movEntradas = movs.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0)
+                    const movSaidas   = movs.filter(l => l.tipo === 'saida').reduce((s, l)   => s + l.valor, 0)
+                    const saldoAtual  = Number(c.saldo_inicial) + movEntradas - movSaidas
+                    return (
+                      <div className="mt-1.5 flex flex-wrap gap-3">
+                        <span className="text-xs flex items-center gap-1 text-muted-foreground">
+                          <Wallet className="h-3 w-3 text-primary/60" />
+                          Inicial: <strong className="text-foreground">{brl(c.saldo_inicial)}</strong>
+                          {c.saldo_inicial_data && (
+                            <span className="text-muted-foreground/70">
+                              em {new Date(c.saldo_inicial_data + 'T12:00:00').toLocaleDateString('pt-BR')}
+                            </span>
+                          )}
+                        </span>
+                        {lancamentos.length > 0 && (
+                          <span className={`text-xs font-bold flex items-center gap-1 ${saldoAtual >= 0 ? 'text-green-500' : 'text-red-400'}`}>
+                            Saldo atual: {brl(saldoAtual)}
+                          </span>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -262,6 +300,36 @@ export default function ContasBancarias({ clienteId, onContasChange }: Props) {
                 placeholder={`Deixe vazio para gerar automático: ${nomeAuto(editando)}`}
               />
             </div>
+            {/* Saldo inicial */}
+            <div className="col-span-2">
+              <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Wallet className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-foreground uppercase tracking-wide">Saldo Inicial</span>
+                  <span className="text-[10px] text-muted-foreground">(opcional)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="Valor (R$)"
+                    type="number"
+                    step="0.01"
+                    value={editando.saldo_inicial != null ? String(editando.saldo_inicial) : ''}
+                    onChange={e => setEditando({ ...editando, saldo_inicial: e.target.value !== '' ? parseFloat(e.target.value) : null })}
+                    placeholder="0,00"
+                  />
+                  <Input
+                    label="Data de referência"
+                    type="date"
+                    value={editando.saldo_inicial_data || ''}
+                    onChange={e => setEditando({ ...editando, saldo_inicial_data: e.target.value || null })}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Informe o saldo existente nessa conta na data acima. Será usado para calcular o saldo atual.
+                </p>
+              </div>
+            </div>
+
             <div className="col-span-2 flex items-center gap-2 p-3 rounded-lg border border-border bg-secondary/50">
               <input
                 type="checkbox"

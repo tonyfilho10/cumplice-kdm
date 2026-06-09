@@ -199,9 +199,11 @@ model ContaBancaria {
   tipo       String   @default("corrente") // corrente | poupança | pagamento
   agencia    String?
   numero     String?
-  principal  Boolean  @default(false)
-  ativo      Boolean  @default(true)
-  created_at DateTime @default(now())
+  principal         Boolean   @default(false)
+  ativo             Boolean   @default(true)
+  saldo_inicial     Decimal?  @db.Decimal(15, 2)
+  saldo_inicial_data DateTime?
+  created_at        DateTime  @default(now())
 
   cliente Cliente @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
 

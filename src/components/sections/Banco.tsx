@@ -234,7 +234,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
       </Card>
 
       {/* Gestão de contas bancárias */}
-      <ContasBancarias clienteId={clienteId} onContasChange={onContasChange} />
+      <ContasBancarias clienteId={clienteId} onContasChange={onContasChange} lancamentos={lancamentos} />
 
       {/* Import OFX — com seleção de conta em destaque */}
       <Card className="mb-4">
