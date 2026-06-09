@@ -47,57 +47,78 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex bg-background overflow-hidden">
 
-      {/* Painel esquerdo — identidade */}
-      <div className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 bg-card border-r border-border px-12 py-16">
+      {/* ── Painel esquerdo — navy marinho CSHub ── */}
+      <div
+        className="hidden lg:flex flex-col justify-between w-[480px] shrink-0 px-12 py-16"
+        style={{ background: 'linear-gradient(160deg, #0C1E3E 60%, #0F2A52 100%)' }}
+      >
+        {/* Logo */}
         <div>
-          <div className="flex items-center gap-2.5 mb-16">
-            <span className="text-2xl">⚡</span>
-            <span className="text-xl font-black text-foreground tracking-tight">Cúmplice</span>
+          <div className="flex items-center gap-3 mb-14">
+            {/* Ícone CSHub — hexágono laranja */}
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'oklch(0.72 0.22 40)' }}>
+              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div>
+              <span className="text-xl font-black text-white tracking-tight">Cúmplice</span>
+              <span className="block text-[10px] font-semibold tracking-widest uppercase" style={{ color: 'oklch(0.72 0.22 40)' }}>by CSHub</span>
+            </div>
           </div>
 
-          <div className="space-y-6">
-            <h1 className="text-3xl font-bold text-foreground leading-snug">
-              Inteligência contábil<br />
-              <span className="text-primary">para quem entende</span><br />
-              de números.
+          <div className="space-y-5">
+            <h1 className="text-4xl font-black text-white leading-tight">
+              Inteligência<br />
+              <span style={{ color: 'oklch(0.80 0.20 40)' }}>contábil</span><br />
+              que trabalha<br />
+              por você.
             </h1>
-            <p className="text-muted-foreground text-sm leading-relaxed max-w-xs">
-              Cruzamento automático de NF-e × banco, diagnóstico tributário e análise em tempo real.
+            <p className="text-sm leading-relaxed" style={{ color: 'oklch(0.70 0.02 240)' }}>
+              Cruzamento automático de NF-e × banco, diagnóstico tributário e análise fiscal em tempo real.
             </p>
           </div>
+
+          {/* Divisor laranja */}
+          <div className="mt-10 mb-8 h-0.5 w-12 rounded" style={{ background: 'oklch(0.72 0.22 40)' }} />
+
+          {/* Features */}
+          <div className="space-y-5">
+            {[
+              { icon: '⚡', label: 'Cruzamento NF × Banco automático' },
+              { icon: '📊', label: 'KPIs e alertas fiscais em tempo real' },
+              { icon: '📈', label: 'Projeção Simples × Presumido × Real' },
+              { icon: '🔗', label: 'SPED EFD integrado ao fluxo de caixa' },
+            ].map(f => (
+              <div key={f.label} className="flex items-center gap-3">
+                <span className="text-base leading-none">{f.icon}</span>
+                <span className="text-sm" style={{ color: 'oklch(0.75 0.02 240)' }}>{f.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Features */}
-        <div className="space-y-4">
-          {[
-            { icon: '🔍', label: 'Cruzamento NF × Banco automático' },
-            { icon: '📊', label: 'KPIs e alertas fiscais em tempo real' },
-            { icon: '📈', label: 'Projeção Simples × Presumido × Real' },
-          ].map(f => (
-            <div key={f.label} className="flex items-center gap-3">
-              <span className="text-base">{f.icon}</span>
-              <span className="text-sm text-muted-foreground">{f.label}</span>
-            </div>
-          ))}
-        </div>
-
-        <p className="text-[11px] text-muted-foreground/50">
-          © 2026 Cúmplice · Inteligência Contábil
+        <p className="text-[11px]" style={{ color: 'oklch(0.45 0.02 240)' }}>
+          © 2026 CSHub · Todos os direitos reservados
         </p>
       </div>
 
-      {/* Painel direito — formulário */}
+      {/* ── Painel direito — formulário ── */}
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
 
         {/* Logo mobile */}
-        <div className="flex lg:hidden items-center gap-2 mb-10">
-          <span className="text-2xl">⚡</span>
+        <div className="flex lg:hidden items-center gap-3 mb-10">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'oklch(0.72 0.22 40)' }}>
+            <svg viewBox="0 0 24 24" className="w-4 h-4">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
           <span className="text-xl font-black text-foreground">Cúmplice</span>
         </div>
 
         <div className="w-full max-w-sm">
           <div className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground">Bem-vindo de volta</h2>
+            <h2 className="text-3xl font-black text-foreground">Bem-vindo</h2>
             <p className="text-sm text-muted-foreground mt-1">Entre com suas credenciais para continuar</p>
           </div>
 
@@ -166,11 +187,12 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Botão */}
+            {/* Botão — laranja CSHub */}
             <button
               type="submit"
               disabled={carregando || !email || !senha}
-              className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm transition-all disabled:opacity-50 hover:opacity-90 active:scale-[.98] flex items-center justify-center gap-2 mt-2"
+              className="w-full h-11 rounded-xl font-bold text-sm transition-all disabled:opacity-50 hover:opacity-90 active:scale-[.98] flex items-center justify-center gap-2 mt-2 text-white"
+              style={{ background: carregando ? undefined : 'oklch(0.72 0.22 40)', backgroundColor: carregando ? undefined : undefined }}
             >
               {carregando ? (
                 <>
@@ -190,6 +212,10 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <p className="text-center text-[11px] text-muted-foreground/50 mt-8">
+            Cúmplice · Powered by CSHub
+          </p>
         </div>
       </div>
     </div>

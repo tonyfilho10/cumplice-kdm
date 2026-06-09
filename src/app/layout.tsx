@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { Geist } from 'next/font/google'
+import { Changa } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/components/ThemeProvider'
 
-const geist = Geist({ subsets: ['latin'], variable: '--font-sans' })
+const changa = Changa({ subsets: ['latin'], weight: ['400', '600', '700', '800'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
   title: 'Sistema Cúmplice',
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={cn('h-full', geist.variable)} suppressHydrationWarning>
+    <html lang="pt-BR" className={cn('h-full', changa.variable)} suppressHydrationWarning>
       <body className="min-h-full bg-background text-foreground">
         <ThemeProvider>
           <TooltipProvider>
