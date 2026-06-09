@@ -124,9 +124,12 @@ function SidebarContent({
         {collapsed ? (
           <span className="text-lg font-black" style={{ color: 'oklch(0.72 0.22 40)' }}>C</span>
         ) : (
-          <div className="flex items-center gap-0.5">
-            <span className="text-xl font-black text-sidebar-foreground tracking-tight">CS</span>
-            <span className="text-xl font-black tracking-tight" style={{ color: 'oklch(0.72 0.22 40)' }}>HUB</span>
+          <div className="flex flex-col gap-0">
+            <div className="flex items-center gap-0.5 leading-none">
+              <span className="text-xl font-black text-sidebar-foreground tracking-tight">CS</span>
+              <span className="text-xl font-black tracking-tight" style={{ color: 'oklch(0.72 0.22 40)' }}>HUB</span>
+            </div>
+            <span className="text-[10px] font-semibold tracking-widest uppercase text-sidebar-foreground/40 leading-none mt-0.5">Cúmplice</span>
           </div>
         )}
       </div>
