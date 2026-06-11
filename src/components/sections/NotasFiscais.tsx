@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import BuscaLancamentos from '@/components/sections/BuscaLancamentos'
 import { parseNFeXML, parseEventoNFe } from '@/lib/parsers/nfe'
+import { parseSiegXLSX, normalizarCNPJ } from '@/lib/parsers/sieg-xlsx'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -30,6 +31,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
     cancelamentos: string[]
     duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[]
     erros: { arquivo: string; erro: string; detalhe?: string }[]
+    avisos: string[]
   } | null>(null)
 
   const [data, setData] = useState(hoje)
@@ -191,7 +193,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
       onRecarregar()
 
       if (duplicados.length > 0 || erros.length > 0 || cancelamentos.length > 0) {
-        setRelatorio({ importados, cancelamentos, duplicados, erros })
+        setRelatorio({ importados, cancelamentos, duplicados, erros, avisos: [] })
       }
 
       const n = importados.length, d = duplicados.length, e = erros.length, c = cancelamentos.length
@@ -206,6 +208,127 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
     } finally {
       setImportando(false)
     }
+  }
+
+  // Importa relatório "Cofre SIEG" (.xlsx) — cada linha é roteada para NF emitida
+  // (saída, CNPJ Emit = cliente) ou ignorada com aviso (entrada/CNPJ divergente)
+  async function importarXLSX(files: File[]) {
+    setImportando(true)
+
+    const importados: string[] = []
+    const erros: { arquivo: string; erro: string; detalhe?: string }[] = []
+    const duplicados: { arquivo: string; numero: string; motivo: string; detalhe: string }[] = []
+    const cancelamentos: string[] = []
+    const avisos: string[] = []
+
+    try {
+      const { data: cliente } = await supabase.from('clientes').select('cnpj').eq('id', clienteId).single()
+      const cnpjCliente = normalizarCNPJ(cliente?.cnpj)
+
+      let entradas = 0
+      let divergentes = 0
+
+      for (const file of files) {
+        const { linhas, erro } = await parseSiegXLSX(file)
+        if (erro) { erros.push({ arquivo: file.name, erro }); continue }
+
+        for (const linha of linhas) {
+          if (linha.cancelada) {
+            if (!linha.chave_acesso) continue
+            const { data: nfExistente } = await supabase
+              .from('notas_fiscais').select('id, numero')
+              .eq('chave_acesso', linha.chave_acesso).eq('cliente_id', clienteId).maybeSingle()
+            if (nfExistente) {
+              await supabase.from('notas_fiscais').update({ cancelada: true }).eq('id', nfExistente.id)
+              cancelamentos.push(`NF ${nfExistente.numero} cancelada`)
+            } else {
+              cancelamentos.push(`Cancelamento para NF ${linha.numero} (não encontrada)`)
+            }
+            continue
+          }
+
+          if (normalizarCNPJ(linha.cnpj_emitente) === cnpjCliente) {
+            if (!linha.data_emissao) { erros.push({ arquivo: file.name, erro: `NF ${linha.numero}: data inválida` }); continue }
+
+            const periodoNF = linha.data_emissao.substring(0, 7)
+            const dadosNF = {
+              cliente_id: clienteId,
+              periodo: periodoNF,
+              data: linha.data_emissao,
+              numero: linha.numero,
+              chave_acesso: linha.chave_acesso || null,
+              cliente_nf: linha.nome_destinatario || 'Consumidor Final',
+              cfop: '5102',
+              valor: linha.valor,
+              conciliada: false,
+              cancelada: false,
+            }
+
+            // Dedup por chave de acesso
+            if (linha.chave_acesso) {
+              const { data: existente } = await supabase
+                .from('notas_fiscais').select('id')
+                .eq('chave_acesso', linha.chave_acesso).eq('cliente_id', clienteId).maybeSingle()
+              if (existente) {
+                await supabase.from('notas_fiscais').update(dadosNF).eq('id', existente.id)
+                duplicados.push({
+                  arquivo: file.name, numero: linha.numero, motivo: 'Atualizada (já existia)',
+                  detalhe: `NF ${linha.numero} | ${periodoNF} | R$ ${linha.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                })
+                continue
+              }
+            }
+
+            const { error: insertError } = await supabase.from('notas_fiscais').insert({ id: crypto.randomUUID(), ...dadosNF })
+            if (insertError) { erros.push({ arquivo: file.name, erro: insertError.message }); continue }
+
+            const label = linha.formato === 'nfce' ? 'NFC-e' : 'NF-e'
+            const aviso = periodoNF !== periodo ? ` → alocado em ${periodoNF}` : ''
+            importados.push(`${label} ${linha.numero}${aviso} — R$ ${linha.valor.toLocaleString('pt-BR')}`)
+            continue
+          }
+
+          if (normalizarCNPJ(linha.cnpj_destinatario) === cnpjCliente) {
+            entradas++
+            continue
+          }
+
+          divergentes++
+        }
+      }
+
+      if (entradas > 0) avisos.push(`${entradas} nota(s) de entrada encontrada(s) na planilha — importe pela aba Compras`)
+      if (divergentes > 0) avisos.push(`${divergentes} linha(s) com CNPJ que não corresponde ao cliente atual — ignoradas`)
+
+      await carregar()
+      onRecarregar()
+
+      if (duplicados.length > 0 || erros.length > 0 || cancelamentos.length > 0 || avisos.length > 0) {
+        setRelatorio({ importados, cancelamentos, duplicados, erros, avisos })
+      }
+
+      const n = importados.length, d = duplicados.length, e = erros.length, c = cancelamentos.length
+      const fora = importados.filter(s => s.includes('→ alocado'))
+      let msg = `${n} NF(s) importada(s)`
+      if (fora.length > 0) msg += ` · ${fora.length} alocada(s) no período correto`
+      if (c > 0) msg += ` · ${c} cancelamento(s)`
+      if (d > 0) msg += ` · ${d} atualizada(s)`
+      if (e > 0) msg += ` · ${e} erro(s)`
+      if (entradas > 0) msg += ` · ${entradas} de entrada (ver Compras)`
+      setToast(n > 0 || c > 0 || d > 0 ? msg
+        : entradas > 0 ? `${entradas} nota(s) de entrada encontrada(s) — importe pela aba Compras`
+        : `Erro: ${erros[0]?.erro || 'Nenhuma NF importada'}`)
+
+    } finally {
+      setImportando(false)
+    }
+  }
+
+  function onFilesNotas(files: File[]) {
+    const xml = files.filter(f => /\.xml$/i.test(f.name))
+    const xlsx = files.filter(f => /\.xlsx$/i.test(f.name))
+    if (xml.length) importarXML(xml)
+    if (xlsx.length) importarXLSX(xlsx)
   }
 
   // ── Relatório de notas faltantes (gaps na sequência numérica) ─────────────
@@ -269,8 +392,8 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
         </div>
         <div style={{ marginTop: 14 }}>
           <UploadZone icon="🧾" label="Importar XMLs de NF-e Emitidas"
-            sub={importando ? 'Importando em lotes...' : 'Exportado do SEFAZ ou ERP — XML (múltiplos)'}
-            onFiles={importarXML} accept=".xml" />
+            sub={importando ? 'Importando em lotes...' : 'XML do SEFAZ/ERP (múltiplos) ou planilha SIEG Cofre (.xlsx)'}
+            onFiles={onFilesNotas} accept=".xml,.xlsx" />
         </div>
       </Card>
 
@@ -433,6 +556,7 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
                   relatorio.cancelamentos.length > 0 && `${relatorio.cancelamentos.length} cancel.`,
                   relatorio.duplicados.length > 0 && `${relatorio.duplicados.length} atualizadas`,
                   relatorio.erros.length > 0 && `${relatorio.erros.length} erros`,
+                  relatorio.avisos.length > 0 && `${relatorio.avisos.length} aviso(s)`,
                 ].filter(Boolean).join(' · ')}
               </span>
             </div>
@@ -500,6 +624,17 @@ export default function NotasFiscais({ clienteId, periodo, refresh, onRecarregar
                       <div style={{ color: 'var(--color-red-400)', marginTop: 2 }}>{e.erro}</div>
                       {e.detalhe && <div style={{ color: 'var(--color-muted-foreground)', marginTop: 2 }}>{e.detalhe}</div>}
                     </div>
+                  ))}
+                </div>
+              )}
+
+              {relatorio.avisos.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-yellow-400)', marginBottom: 6 }}>
+                    ⚠️ {relatorio.avisos.length} aviso(s)
+                  </p>
+                  {relatorio.avisos.map((a, i) => (
+                    <div key={i} style={{ fontSize: 11, padding: '6px 10px', borderLeft: '3px solid var(--color-yellow-400)', background: 'var(--color-secondary)', borderRadius: 4, marginBottom: 4 }}>{a}</div>
                   ))}
                 </div>
               )}

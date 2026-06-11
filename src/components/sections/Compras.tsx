@@ -8,6 +8,7 @@ import {
   RowActions, Select, Table, Td, Toast, Tr, UploadZone, brl, fmtData,
 } from '@/components/ui'
 import { parseMultiplosXML } from '@/lib/parsers/nfe'
+import { parseSiegXLSX, normalizarCNPJ } from '@/lib/parsers/sieg-xlsx'
 import { checkPeriodoAberto } from '@/lib/periodo-check-client'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
@@ -187,6 +188,138 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
     setImportando(false)
   }
 
+  // Importa relatório "Cofre SIEG" (.xlsx) — cada linha é roteada para Compra
+  // (entrada, CNPJ Dest = cliente) ou ignorada com aviso (saída/CNPJ divergente)
+  async function importarXLSX(files: File[]) {
+    setImportando(true)
+
+    const { data: cliente } = await supabase.from('clientes').select('cnpj').eq('id', clienteId).single()
+    const cnpjCliente = normalizarCNPJ(cliente?.cnpj)
+
+    let inseridos = 0
+    let atualizados = 0
+    let cancelados = 0
+    let saidas = 0
+    let divergentes = 0
+    const errosInsert: string[] = []
+
+    let totalLinhas = 0
+    const todasLinhas: { arquivo: string; linhas: Awaited<ReturnType<typeof parseSiegXLSX>>['linhas'] }[] = []
+    for (const file of files) {
+      const { linhas, erro } = await parseSiegXLSX(file)
+      if (erro) { errosInsert.push(`${file.name}: ${erro}`); continue }
+      todasLinhas.push({ arquivo: file.name, linhas })
+      totalLinhas += linhas.length
+    }
+    setProgressoImport({ atual: 0, total: totalLinhas })
+
+    let processadas = 0
+    for (const { linhas } of todasLinhas) {
+      for (const linha of linhas) {
+        processadas++
+
+        if (linha.cancelada) {
+          const cnpjFornecedor = normalizarCNPJ(linha.cnpj_emitente)
+          const { data: existente } = await supabase
+            .from('compras').select('id')
+            .eq('cliente_id', clienteId).eq('nf_entrada', linha.numero).eq('cnpj_fornecedor', cnpjFornecedor)
+            .maybeSingle()
+          if (existente) {
+            const { error } = await supabase.from('compras').update({ cancelada: true }).eq('id', existente.id)
+            if (!error) cancelados++
+          }
+          if (processadas % 10 === 0) setProgressoImport({ atual: processadas, total: totalLinhas })
+          continue
+        }
+
+        if (normalizarCNPJ(linha.cnpj_destinatario) === cnpjCliente) {
+          if (!linha.data_emissao) { errosInsert.push(`NF ${linha.numero}: data inválida`); continue }
+
+          const cnpjFornecedor = normalizarCNPJ(linha.cnpj_emitente)
+          const periodoNF = linha.data_emissao.substring(0, 7)
+          const base = {
+            cliente_id: clienteId,
+            periodo: periodoNF,
+            data: linha.data_emissao,
+            fornecedor: linha.nome_emitente || 'Fornecedor',
+            cnpj_fornecedor: cnpjFornecedor,
+            valor: linha.valor,
+            nf_entrada: linha.numero,
+            categoria: 'Mercadoria para Revenda',
+            pagamento: 'Importado XLSX',
+          }
+
+          const { data: existente } = await supabase
+            .from('compras').select('id')
+            .eq('cliente_id', clienteId).eq('periodo', periodoNF)
+            .eq('nf_entrada', linha.numero).eq('cnpj_fornecedor', cnpjFornecedor)
+            .maybeSingle()
+
+          if (existente) {
+            const { error } = await supabase.from('compras').update(base).eq('id', existente.id)
+            if (error) errosInsert.push(`NF ${linha.numero}: ${error.message}`)
+            else atualizados++
+          } else {
+            let { error } = await supabase.from('compras').insert({ id: crypto.randomUUID(), ...base, cfop: null })
+            if (error?.message?.includes('cfop')) {
+              const r = await supabase.from('compras').insert({ id: crypto.randomUUID(), ...base })
+              error = r.error
+            }
+            if (error) errosInsert.push(`NF ${linha.numero}: ${error.message}`)
+            else inseridos++
+          }
+
+          if (processadas % 10 === 0) setProgressoImport({ atual: processadas, total: totalLinhas })
+          continue
+        }
+
+        if (normalizarCNPJ(linha.cnpj_emitente) === cnpjCliente) {
+          saidas++
+          continue
+        }
+
+        divergentes++
+      }
+    }
+
+    setProgressoImport({ atual: 0, total: 0 })
+
+    // Recarrega diretamente do banco — sem depender de closure
+    const { data: fresco } = await supabase
+      .from('compras')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('periodo', periodo)
+      .order('data', { ascending: false })
+
+    setCompras((fresco || []) as typeof compras)
+
+    // Dispara conciliação server-side para os períodos afetados
+    const periodosAfetados = [...new Set((fresco || []).map((r: { periodo: string }) => r.periodo))]
+    await Promise.allSettled(
+      periodosAfetados.map(p => fetch(`/api/clientes/${clienteId}/conciliar?periodo=${p}`, { method: 'POST' }))
+    )
+
+    onRecarregar()
+
+    let msg = `${inseridos} compra(s) importada(s)`
+    if (atualizados > 0) msg += ` · ${atualizados} atualizada(s)`
+    if (cancelados > 0) msg += ` · ${cancelados} cancelada(s)`
+    if (saidas > 0) msg += ` · ${saidas} de saída (ver Notas Fiscais)`
+    if (divergentes > 0) msg += ` · ${divergentes} ignorada(s) (CNPJ divergente)`
+    if (errosInsert.length > 0) msg = `Erro: ${errosInsert[0]}`
+    setToast(msg)
+
+    setImportando(false)
+  }
+
+  function onFiles(files: File[]) {
+    const xml = files.filter(f => /\.xml$/i.test(f.name))
+    const xlsx = files.filter(f => /\.xlsx$/i.test(f.name))
+    if (xml.length) importarXML(xml)
+    if (xlsx.length) importarXLSX(xlsx)
+  }
+
   const [busca, setBusca] = useState('')
 
   async function toggleDevolucao(c: Compra) {
@@ -236,11 +369,11 @@ export default function Compras({ clienteId, periodo, refresh, onRecarregar }: P
           <UploadZone icon="📂" label="Importar XMLs de NF-e de Entrada"
             sub={
               importando && progressoImport.total > 0
-                ? `Processando ${progressoImport.atual}/${progressoImport.total} arquivos...`
+                ? `Processando ${progressoImport.atual}/${progressoImport.total}...`
                 : importando ? 'Preparando importação...'
-                : 'Arraste ou clique — XML (múltiplos arquivos)'
+                : 'XML (múltiplos arquivos) ou planilha SIEG Cofre (.xlsx)'
             }
-            onFiles={importarXML} accept=".xml" />
+            onFiles={onFiles} accept=".xml,.xlsx" />
         </div>
       </Card>
 
