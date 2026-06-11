@@ -3,6 +3,9 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   reactCompiler: true,
 
+  // Evita problemas de bundling dessas libs em ambientes serverless (Netlify)
+  serverExternalPackages: ['@anthropic-ai/sdk', 'pdf-lib'],
+
   // Headers de segurança HTTP
   async headers() {
     return [
