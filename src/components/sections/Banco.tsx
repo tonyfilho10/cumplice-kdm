@@ -166,12 +166,17 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 
   // ── Filtro e consolidado ──────────────────────────────────────────────────
   const [contaFiltro, setContaFiltro] = useState<string | null>(null)
+  const [comprovanteFiltro, setComprovanteFiltro] = useState<'todos' | 'com' | 'sem'>('todos')
 
   const contasPeriodo = [...new Set(lancamentos.map(l => l.conta).filter(Boolean))] as string[]
 
-  const visiveis = contaFiltro
-    ? lancamentos.filter(l => l.conta === contaFiltro)
-    : lancamentos
+  const visiveis = lancamentos
+    .filter(l => !contaFiltro || l.conta === contaFiltro)
+    .filter(l => {
+      if (comprovanteFiltro === 'todos') return true
+      const temComprovante = !!(l as any).comprovante_url
+      return comprovanteFiltro === 'com' ? temComprovante : !temComprovante
+    })
 
   // Consolidado por banco
   const consolidado = contasPeriodo.map(conta => {
@@ -354,6 +359,17 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
               ))}
             </select>
           </div>
+
+          {/* Filtro por comprovante */}
+          <select
+            value={comprovanteFiltro}
+            onChange={e => setComprovanteFiltro(e.target.value as 'todos' | 'com' | 'sem')}
+            className="h-9 rounded-lg border border-border bg-secondary text-foreground text-sm px-3 pr-8 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="todos">Comprovante: todos</option>
+            <option value="com">Com comprovante</option>
+            <option value="sem">Sem comprovante</option>
+          </select>
 
           {/* Resumo da conta selecionada */}
           {(() => {
