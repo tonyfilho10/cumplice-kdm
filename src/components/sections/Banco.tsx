@@ -329,6 +329,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
       <div className="mb-4">
         <UploadComprovanteEmLote
           clienteId={clienteId}
+          periodo={periodo}
           lancamentos={lancamentos}
           onConcluido={carregar}
         />
