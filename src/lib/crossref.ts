@@ -27,7 +27,7 @@ export type ResultadoCruzamento = {
   }
 }
 
-const TOLERANCIA_VALOR    = 0.02  // 2% para match primário
+const TOLERANCIA_VALOR    = 0     // match primário exige valor idêntico (sem margem de erro)
 const TOLERANCIA_VALOR_B2B = 0.05 // 5% para match B2B (boleto pode ter desconto/juros)
 const JANELA_DIAS         = 3
 const JANELA_DIAS_B2B     = 90   // boleto 30-60-90 dias
@@ -129,7 +129,7 @@ export function cruzarDados(
       continue
     }
 
-    // (a) Tenta match contra notas_fiscais (data ±3 dias, valor ±2%)
+    // (a) Tenta match contra notas_fiscais (data ±3 dias, valor 100% idêntico)
     const matchNF = notasConciliaveis.find(nf => {
       if (notasUsadas.has(nf.id)) return false
       return dentroToleranciaPct(lanc.valor, nf.valor, TOLERANCIA_VALOR)
@@ -139,17 +139,7 @@ export function cruzarDados(
     if (matchNF) {
       notasUsadas.add(matchNF.id)
       bancoUsados.add(lanc.id)
-      const diferenca = Math.abs(lanc.valor - matchNF.valor)
-      conciliacoes.push({ banco_id: lanc.id, nf_id: matchNF.id, diferenca })
-      if (diferenca > 0) {
-        divergencias.push({
-          cliente_id: clienteId, periodo,
-          tipo: 'receita_nao_declarada', severidade: 'baixo',
-          valor: diferenca,
-          descricao: `Divergência parcial: Banco R$ ${lanc.valor.toLocaleString('pt-BR')} × NF ${matchNF.numero} R$ ${matchNF.valor.toLocaleString('pt-BR')} — diferença R$ ${diferenca.toLocaleString('pt-BR')}`,
-          banco_lancamento_id: lanc.id, nota_fiscal_id: matchNF.id, resolvida: false,
-        })
-      }
+      conciliacoes.push({ banco_id: lanc.id, nf_id: matchNF.id, diferenca: 0 })
       continue
     }
 
