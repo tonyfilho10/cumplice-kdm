@@ -1,62 +1,47 @@
-// Análise de comprovantes (PDF/imagem) via Claude API
+// Análise de uma única página de comprovante (PDF/imagem) via Claude API
 import Anthropic from '@anthropic-ai/sdk'
 
-export type ComprovanteDetectado = {
-  paginas: number[]
-  valor: number
+export type PaginaAnalisada = {
+  valor: number | null
   data: string | null // YYYY-MM-DD
   descricao: string
 }
 
-const TOOL_NAME = 'registrar_comprovantes'
+const TOOL_NAME = 'registrar_pagina_comprovante'
 
 const TOOL_SCHEMA = {
   name: TOOL_NAME,
-  description: 'Registra os comprovantes de pagamento identificados no documento',
+  description: 'Registra os dados extraídos de uma página de comprovante de pagamento',
   input_schema: {
     type: 'object' as const,
     properties: {
-      comprovantes: {
-        type: 'array',
-        description: 'Um item para cada comprovante de pagamento distinto encontrado no documento',
-        items: {
-          type: 'object',
-          properties: {
-            paginas: {
-              type: 'array',
-              description: 'Números das páginas (1-indexed) que compõem este comprovante',
-              items: { type: 'integer' },
-            },
-            valor: {
-              type: 'number',
-              description: 'Valor pago em reais (ex: 215.90)',
-            },
-            data: {
-              type: ['string', 'null'],
-              description: 'Data de pagamento/vencimento no formato YYYY-MM-DD, ou null se não encontrada',
-            },
-            descricao: {
-              type: 'string',
-              description: 'Descrição curta do comprovante (ex: "DARF - Código 2089", "PIX para Fornecedor X", "Guia GPS")',
-            },
-          },
-          required: ['paginas', 'valor', 'descricao'],
-        },
+      valor: {
+        type: ['number', 'null'],
+        description: 'Valor pago em reais (ex: 215.90), ou null se esta página não contém um valor de pagamento próprio (ex: página de continuação/instruções de um comprovante anterior)',
+      },
+      data: {
+        type: ['string', 'null'],
+        description: 'Data de pagamento (ou vencimento, se não houver data de pagamento) no formato YYYY-MM-DD, ou null se não encontrada',
+      },
+      descricao: {
+        type: 'string',
+        description: 'Descrição curta do conteúdo da página (tipo de documento + favorecido/código, quando disponível). Se for página de continuação, descreva como tal.',
       },
     },
-    required: ['comprovantes'],
+    required: ['valor', 'data', 'descricao'],
   },
 }
 
-const PROMPT = `Analise este documento, que pode conter um ou mais comprovantes de pagamento (DARF, GPS, FGTS, PIX, TED, boleto, guias de tributos, etc).
+const PROMPT = `Esta é UMA página de um documento PDF que pode conter um ou mais comprovantes de pagamento (DARF, GPS, FGTS, PIX, TED, boleto, guias de tributos, etc), um após o outro.
 
-Para CADA comprovante de pagamento distinto presente no documento, identifique:
-- as páginas (1-indexed) que ele ocupa
-- o valor pago em reais
-- a data de pagamento (ou vencimento, se não houver data de pagamento), no formato YYYY-MM-DD
-- uma descrição curta (tipo de documento + favorecido/código, quando disponível)
+Analise APENAS esta página e identifique:
+- O valor pago em reais (campo "valor"), se esta página contém o valor de um comprovante de pagamento.
+- A data de pagamento/vencimento (campo "data"), no formato YYYY-MM-DD.
+- Uma descrição curta do conteúdo (campo "descricao").
 
-Se o documento inteiro for um único comprovante, retorne apenas um item. Use a ferramenta ${TOOL_NAME} para responder.`
+Se esta página for apenas a CONTINUAÇÃO de um comprovante cujo valor já apareceu em uma página anterior (ex: instruções, código de barras sem novo valor, segunda via), retorne "valor": null.
+
+Use a ferramenta ${TOOL_NAME} para responder.`
 
 let client: Anthropic | null = null
 function getClient(): Anthropic {
@@ -68,7 +53,7 @@ function getClient(): Anthropic {
   return client
 }
 
-export async function analisarComprovante(buffer: Buffer, mimeType: string): Promise<ComprovanteDetectado[]> {
+export async function analisarPaginaComprovante(buffer: Buffer, mimeType: string): Promise<PaginaAnalisada> {
   const base64 = buffer.toString('base64')
 
   const documentBlock = mimeType === 'application/pdf'
@@ -82,10 +67,8 @@ export async function analisarComprovante(buffer: Buffer, mimeType: string): Pro
       }
 
   const response = await getClient().messages.create({
-    // Modelo rápido — extração estruturada de valor/data/descrição precisa terminar
-    // dentro do limite de timeout (~26s) das functions serverless do Netlify.
     model: 'claude-haiku-4-5',
-    max_tokens: 4096,
+    max_tokens: 1024,
     tools: [TOOL_SCHEMA],
     tool_choice: { type: 'tool', name: TOOL_NAME },
     messages: [
@@ -97,8 +80,14 @@ export async function analisarComprovante(buffer: Buffer, mimeType: string): Pro
   })
 
   const toolUse = response.content.find(c => c.type === 'tool_use' && c.name === TOOL_NAME)
-  if (!toolUse || toolUse.type !== 'tool_use') return []
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    return { valor: null, data: null, descricao: '' }
+  }
 
-  const input = toolUse.input as { comprovantes?: ComprovanteDetectado[] }
-  return (input.comprovantes || []).filter(c => Array.isArray(c.paginas) && c.paginas.length > 0)
+  const input = toolUse.input as PaginaAnalisada
+  return {
+    valor: typeof input.valor === 'number' ? input.valor : null,
+    data: input.data || null,
+    descricao: input.descricao || '',
+  }
 }
