@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Cliente } from '@/lib/supabase/types'
 import { Btn, Card, ConfirmDelete, Input, Modal, Select, Toast } from '@/components/ui'
 import { Button } from '@/components/ui/button'
-import { Plus, Users, ShieldCheck, UserCircle2, Briefcase } from 'lucide-react'
+import { Plus, Users, ShieldCheck, UserCircle2, Briefcase, Star } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -20,9 +20,10 @@ type Usuario = {
 const vazio = () => ({ email: '', senha: '', confirmarSenha: '', papel: 'contador' })
 
 const PAPEIS = [
-  { value: 'contador', label: 'Financeiro', desc: 'Visualiza e lança dados',               icon: UserCircle2,  cor: 'text-blue-400',   bg: 'bg-blue-500/15   border-blue-500/30'   },
-  { value: 'dono',     label: 'Sócio/Dono', desc: 'Acesso completo sem gerenciar sistema', icon: Briefcase,    cor: 'text-amber-400',  bg: 'bg-amber-500/15  border-amber-500/30'  },
-  { value: 'admin',    label: 'Admin',       desc: 'Pode fechar períodos + gerenciar',       icon: ShieldCheck,  cor: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
+  { value: 'contador', label: 'Financeiro', desc: 'Visualiza e lança dados',                          icon: UserCircle2, cor: 'text-blue-400',   bg: 'bg-blue-500/15   border-blue-500/30'   },
+  { value: 'dono',     label: 'Sócio/Dono', desc: 'Visão gerencial — sem acesso a fiscal/contábil',   icon: Briefcase,   cor: 'text-amber-400',  bg: 'bg-amber-500/15  border-amber-500/30'  },
+  { value: 'admin',    label: 'Admin',       desc: 'Pode fechar períodos + gerenciar',                 icon: ShieldCheck, cor: 'text-purple-400', bg: 'bg-purple-500/15 border-purple-500/30' },
+  { value: 'standard', label: 'Standard',   desc: 'Acesso básico — sem módulos fiscais/contábeis',    icon: Star,        cor: 'text-green-400',  bg: 'bg-green-500/15  border-green-500/30'  },
 ]
 
 function fmtData(iso: string | null) {

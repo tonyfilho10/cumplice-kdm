@@ -113,10 +113,17 @@ function SidebarContent({
   const router = useRouter()
   const supabase = createClient()
 
-  // Cliente final ('dono') não tem acesso à escrituração fiscal digital
-  const navItems = papel === 'dono'
-    ? NAV_ITEMS.map(group => ({ ...group, items: group.items.filter(i => i.id !== 'sped') }))
-    : NAV_ITEMS
+  const ABAS_RESTRITAS = new Set<Section>(['sped', 'notas', 'compras', 'config', 'clientes'])
+  const semAcessoFiscal = papel === 'dono' || papel === 'standard'
+  const navItems = NAV_ITEMS
+    .map(group => ({
+      ...group,
+      items: group.items.filter(i => {
+        if (i.id === 'usuarios' && papel !== 'admin') return false
+        if (semAcessoFiscal && ABAS_RESTRITAS.has(i.id)) return false
+        return true
+      }),
+    }))
 
   async function handleLogout() {
     await supabase.auth.signOut()

@@ -91,9 +91,10 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
     })
   }, [clienteAtivo?.id])
 
-  // Cliente final ('dono') não tem acesso à aba SPED EFD
+  // Sócio/Dono e Standard não têm acesso às abas fiscais/contábeis
   useEffect(() => {
-    if (papel === 'dono' && secao === 'sped') setSecao('visao-geral')
+    const abasRestritas = new Set<Section>(['sped', 'notas', 'compras', 'config', 'clientes'])
+    if ((papel === 'dono' || papel === 'standard') && abasRestritas.has(secao)) setSecao('visao-geral')
   }, [papel, secao])
 
   // Recarrega dados do cliente ativo do banco (para refletir edições do Config)
