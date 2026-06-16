@@ -22,27 +22,36 @@ type Acao = {
 
 const ACOES_POR_TIPO: Record<string, Acao[]> = {
   receita_nao_declarada: [
-    { id: 'nf_emitida',   label: 'NF Emitida',      icon: '📄', descricao: 'Nota fiscal já foi ou será emitida retroativamente', autoResolve: true,  subform: 'nf_numero'  },
-    { id: 'vincular_nf',  label: 'Vincular NF',      icon: '🔗', descricao: 'Vincular a uma NF já lançada no período',            autoResolve: true,  subform: 'vincular_nf' },
-    { id: 'nao_tributavel',label: 'Não Tributável',  icon: '🔕', descricao: 'Devolução, adiantamento ou entrada sem incidência',  autoResolve: false },
-    { id: 'aguardando',   label: 'Em Análise',        icon: '⏳', descricao: 'Aguardando esclarecimento do cliente',               autoResolve: false },
+    { id: 'nf_emitida',        label: 'NF Emitida',         icon: '📄', descricao: 'Nota fiscal já foi ou será emitida retroativamente', autoResolve: true,  subform: 'nf_numero'  },
+    { id: 'vincular_nf',       label: 'Vincular NF',         icon: '🔗', descricao: 'Vincular a uma NF já lançada no período',            autoResolve: true,  subform: 'vincular_nf' },
+    { id: 'deposito_cheque',   label: 'Depósito/Cheque',     icon: '🏦', descricao: 'Depósito ou cheque — não gera NF no SPED',           autoResolve: true  },
+    { id: 'aplicacao_resgate', label: 'Aplicação/Resgate',   icon: '📈', descricao: 'Movimentação financeira (investimento ou resgate)',   autoResolve: true  },
+    { id: 'nao_tributavel',    label: 'Não Tributável',       icon: '🔕', descricao: 'Devolução, adiantamento ou entrada sem incidência',  autoResolve: false },
+    { id: 'aguardando',        label: 'Em Análise',           icon: '⏳', descricao: 'Aguardando esclarecimento do cliente',               autoResolve: false },
   ],
   compra_sem_nf: [
-    { id: 'nf_recebida',  label: 'NF Recebida',      icon: '✅', descricao: 'NF já foi recebida e escriturada',                  autoResolve: true  },
-    { id: 'nf_a_receber', label: 'NF a Receber',     icon: '📬', descricao: 'Fornecedor vai enviar a NF em breve',               autoResolve: false },
-    { id: 'solicitar_nf', label: 'Solicitar NF',     icon: '📧', descricao: 'Gerar mensagem para cobrar o fornecedor',           autoResolve: false, subform: 'msg_template' },
-    { id: 'despesa_sem_nf',label:'Sem NF Confirmado',icon: '⚠️', descricao: 'Fornecedor não emite NF (risco fiscal registrado)', autoResolve: false },
+    { id: 'nf_recebida',       label: 'NF Recebida',         icon: '✅', descricao: 'NF já foi recebida e escriturada',                  autoResolve: true  },
+    { id: 'deposito_cheque',   label: 'Depósito/Cheque',     icon: '🏦', descricao: 'Depósito ou cheque — não gera NF no SPED',           autoResolve: true  },
+    { id: 'aplicacao_resgate', label: 'Aplicação/Resgate',   icon: '📈', descricao: 'Movimentação financeira (investimento ou resgate)',   autoResolve: true  },
+    { id: 'nf_a_receber',      label: 'NF a Receber',        icon: '📬', descricao: 'Fornecedor vai enviar a NF em breve',               autoResolve: false },
+    { id: 'solicitar_nf',      label: 'Solicitar NF',        icon: '📧', descricao: 'Gerar mensagem para cobrar o fornecedor',           autoResolve: false, subform: 'msg_template' },
+    { id: 'despesa_sem_nf',    label: 'Sem NF Confirmado',   icon: '⚠️', descricao: 'Fornecedor não emite NF (risco fiscal registrado)', autoResolve: false },
   ],
   pagamento_sem_nf_sped: [
-    { id: 'classificar_despesa', label: 'É Despesa',    icon: '🏷️', descricao: 'Pagamento de despesa operacional (aluguel, serviços…)', autoResolve: true, subform: 'categoria' },
-    { id: 'transferencia',       label: 'Transferência', icon: '↔️', descricao: 'Transferência entre contas próprias — não é despesa',   autoResolve: true  },
-    { id: 'nf_a_receber',        label: 'NF a Receber',  icon: '📬', descricao: 'Fornecedor vai enviar a NF de compra',                  autoResolve: false },
+    { id: 'classificar_despesa', label: 'É Despesa',         icon: '🏷️', descricao: 'Pagamento de despesa operacional (aluguel, serviços…)', autoResolve: true, subform: 'categoria' },
+    { id: 'transferencia',       label: 'Transferência',      icon: '↔️', descricao: 'Transferência entre contas próprias — não é despesa',   autoResolve: true  },
+    { id: 'deposito_cheque',     label: 'Depósito/Cheque',    icon: '🏦', descricao: 'Depósito ou cheque emitido — não gera NF no SPED',     autoResolve: true  },
+    { id: 'aplicacao_resgate',   label: 'Aplicação/Resgate',  icon: '📈', descricao: 'Movimentação financeira (investimento ou resgate)',     autoResolve: true  },
+    { id: 'nf_a_receber',        label: 'NF a Receber',       icon: '📬', descricao: 'Fornecedor vai enviar a NF de compra',                  autoResolve: false },
     { id: 'solicitar_nf',        label: 'Solicitar NF',  icon: '📧', descricao: 'Gerar mensagem para cobrar o fornecedor',               autoResolve: false, subform: 'msg_template' },
   ],
   despesa_sem_comprovante: [
-    { id: 'comprovante_enviado', label: 'Comprovante OK',  icon: '📎', descricao: 'Comprovante fiscal já foi enviado / registrado',       autoResolve: true  },
-    { id: 'aguardando',          label: 'Aguardando',      icon: '⏳', descricao: 'Comprovante será enviado em breve',                    autoResolve: false },
-    { id: 'nao_dedutivel',       label: 'Não Dedutível',   icon: '❌', descricao: 'Confirmado que a despesa não é dedutível fiscalmente', autoResolve: false },
+    { id: 'comprovante_enviado', label: 'Comprovante OK',    icon: '📎', descricao: 'Comprovante fiscal já foi enviado / registrado',       autoResolve: true  },
+    { id: 'imposto_tributo',     label: 'Imposto/Tributo',   icon: '',   descricao: 'Pagamento de imposto ou tributo governamental',        autoResolve: true  },
+    { id: 'deposito_cheque',     label: 'Depósito/Cheque',   icon: '🏦', descricao: 'Depósito ou cheque — não gera NF no SPED',            autoResolve: true  },
+    { id: 'aplicacao_resgate',   label: 'Aplicação/Resgate', icon: '📈', descricao: 'Movimentação financeira (investimento ou resgate)',    autoResolve: true  },
+    { id: 'aguardando',          label: 'Aguardando',        icon: '⏳', descricao: 'Comprovante será enviado em breve',                    autoResolve: false },
+    { id: 'nao_dedutivel',       label: 'Não Dedutível',     icon: '❌', descricao: 'Confirmado que a despesa não é dedutível fiscalmente', autoResolve: false },
   ],
 }
 
@@ -59,14 +68,14 @@ type OrientacaoSalva = { observacao: string | null; resolvida: boolean; id: stri
 
 type ModalState = {
   divergencia: DivType
-  acaoId: string | null        // resolucao_tipo selecionado
-  texto: string                // observacao
+  divergenciasBulk?: DivType[]  // quando undefined = modo singular
+  acaoId: string | null
+  texto: string
   resolvida: boolean
-  // sub-forms
-  nfNumero: string             // para nf_emitida
-  nfSelecionada: string        // para vincular_nf (id da NF)
-  categoriaDespesa: string     // para classificar_despesa
-  msgTemplate: string          // para solicitar_nf (read-only, copiável)
+  nfNumero: string
+  nfSelecionada: string
+  categoriaDespesa: string
+  msgTemplate: string
   nfsDisponiveis: { id: string; numero: string; valor: number; cliente_nf: string }[]
   carregandoNFs: boolean
 }
@@ -101,15 +110,23 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     const existente = chave ? orientacoesSalvas[chave] : null
     setModal({
       divergencia: div,
+      divergenciasBulk: undefined,
       acaoId: existente?.resolucao_tipo || null,
       texto: existente?.observacao || '',
       resolvida: existente?.resolvida || false,
-      nfNumero: '',
-      nfSelecionada: '',
-      categoriaDespesa: '',
-      msgTemplate: '',
-      nfsDisponiveis: [],
-      carregandoNFs: false,
+      nfNumero: '', nfSelecionada: '', categoriaDespesa: '', msgTemplate: '',
+      nfsDisponiveis: [], carregandoNFs: false,
+    })
+  }
+
+  function abrirModalBulk(divs: DivType[]) {
+    if (divs.length === 0) return
+    setModal({
+      divergencia: divs[0],
+      divergenciasBulk: divs,
+      acaoId: null, texto: '', resolvida: false,
+      nfNumero: '', nfSelecionada: '', categoriaDespesa: '', msgTemplate: '',
+      nfsDisponiveis: [], carregandoNFs: false,
     })
   }
 
@@ -155,20 +172,22 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     setModal(novoModal)
   }
 
-  // ── Salva a resolução ────────────────────────────────────────────────────
+  // ── Salva a resolução (singular ou bulk) ────────────────────────────────
   async function salvar() {
     if (!modal) return
+    if (modal.acaoId === 'imposto_tributo' && !modal.texto.trim()) {
+      setToast('Erro: Descreva o imposto ou tributo antes de salvar.')
+      return
+    }
     setSalvando(true)
-    const div = modal.divergencia
-    const chave = div.banco_lancamento_id || div.compra_id || div.despesa_id
-    const existente = chave ? orientacoesSalvas[chave] : null
 
-    // Monta texto de observação automático se vazio + ação selecionada
+    const divs = modal.divergenciasBulk ?? [modal.divergencia]
+
     let textoFinal = modal.texto.trim()
     if (!textoFinal && modal.acaoId) {
-      const acao = ACOES_POR_TIPO[div.tipo]?.find(a => a.id === modal.acaoId)
+      const acao = ACOES_POR_TIPO[divs[0].tipo]?.find(a => a.id === modal.acaoId)
       if (acao) textoFinal = acao.descricao
-      if (modal.nfNumero)        textoFinal += ` · NF ${modal.nfNumero}`
+      if (modal.nfNumero)         textoFinal += ` · NF ${modal.nfNumero}`
       if (modal.categoriaDespesa) textoFinal += ` · Categoria: ${modal.categoriaDespesa}`
     }
 
@@ -179,26 +198,41 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
       resolucao_nf_id: modal.nfSelecionada || null,
     }
 
-    if (existente) {
-      await supabase.from('divergencias').update(payload).eq('id', existente.id)
-    } else {
-      await supabase.from('divergencias').insert({
-        id: crypto.randomUUID(),
-        cliente_id: clienteId,
-        periodo,
-        tipo: div.tipo,
-        severidade: div.severidade,
-        valor: div.valor,
-        descricao: div.descricao,
-        banco_lancamento_id: div.banco_lancamento_id || null,
-        nota_fiscal_id: div.nota_fiscal_id || null,
-        compra_id: div.compra_id || null,
-        despesa_id: div.despesa_id || null,
-        ...payload,
-      })
-    }
+    await Promise.all(divs.map(async div => {
+      const chave = div.banco_lancamento_id || div.compra_id || div.despesa_id
+      const existente = chave ? orientacoesSalvas[chave] : null
 
-    setToast(modal.resolvida ? 'Marcado como resolvido!' : 'Orientação salva!')
+      // Imposto/Tributo: marca lançamento bancário como conciliado
+      if (modal.acaoId === 'imposto_tributo' && div.banco_lancamento_id) {
+        await supabase.from('banco_lancamentos')
+          .update({ status: 'ok', categoria: 'Imposto/Tributo' })
+          .eq('id', div.banco_lancamento_id)
+      }
+
+      if (existente) {
+        await supabase.from('divergencias').update(payload).eq('id', existente.id)
+      } else {
+        await supabase.from('divergencias').insert({
+          id: crypto.randomUUID(),
+          cliente_id: clienteId,
+          periodo,
+          tipo: div.tipo,
+          severidade: div.severidade,
+          valor: div.valor,
+          descricao: div.descricao,
+          banco_lancamento_id: div.banco_lancamento_id || null,
+          nota_fiscal_id: div.nota_fiscal_id || null,
+          compra_id: div.compra_id || null,
+          despesa_id: div.despesa_id || null,
+          ...payload,
+        })
+      }
+    }))
+
+    const n = divs.length
+    setToast(modal.resolvida
+      ? `${n > 1 ? `${n} itens marcados` : 'Marcado'} como resolvido!`
+      : `Orientação salva${n > 1 ? ` para ${n} itens` : ''}!`)
     setModal(null)
     setSalvando(false)
     await carregarOrientacoes()
@@ -292,6 +326,7 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
       <GrupoCards
         orientacoesSalvas={orientacoesSalvas}
         onResolver={abrirModal}
+        onResolverMultiplos={abrirModalBulk}
         grupos={[
           { id: 'rec',  icon: '',    titulo: 'Entradas sem NF Emitida',        subtitulo: 'Possível omissão de receita',                nivel: 'alto',  cor: 'var(--red)',    total: recNaoDeclarada.reduce((s,d)=>s+(d.valor||0),0), itens: recNaoDeclarada },
           { id: 'pag',  icon: '',    titulo: 'Pagamentos sem NF no SPED',       subtitulo: 'Saída bancária sem NF de compra',            nivel: 'medio', cor: 'var(--orange)', total: pagSemNfSped.reduce((s,d)=>s+(d.valor||0),0),    itens: pagSemNfSped    },
@@ -329,30 +364,123 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
   )
 }
 
+// ── Accordion de itens resolvidos ─────────────────────────────────────────
+function AccordionResolvidos({ itens, orientacoesSalvas, onResolver, selecionados, toggleSel }: {
+  itens: DivType[]
+  orientacoesSalvas: Record<string, OrientacaoSalva>
+  onResolver: (d: DivType) => void
+  selecionados: Set<string>
+  toggleSel: (chave: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', marginTop: 4 }}>
+      <button
+        onClick={() => setAberto(p => !p)}
+        style={{
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8,
+          color: 'var(--muted-foreground)', fontSize: 12,
+        }}
+      >
+        <span style={{ fontSize: 10, transform: aberto ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▶</span>
+        <span style={{ color: 'var(--green)', fontWeight: 600 }}>{itens.length} resolvido{itens.length !== 1 ? 's' : ''}</span>
+        <span style={{ fontSize: 11 }}>— clique para ver</span>
+      </button>
+      {aberto && (
+        <Table headers={['', 'Descrição', 'Valor', 'Risco', 'Resolução']}>
+          {itens.map(d => {
+            const chave = String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao)
+            const ori = orientacoesSalvas[(d.banco_lancamento_id || d.compra_id || d.despesa_id) ?? '']
+            return (
+              <Tr key={chave}>
+                <Td>
+                  <input
+                    type="checkbox"
+                    checked={selecionados.has(chave)}
+                    onChange={() => toggleSel(chave)}
+                    style={{ cursor: 'pointer', width: 15, height: 15 }}
+                  />
+                </Td>
+                <Td>
+                  <div style={{ opacity: 0.6 }}>
+                    <DescricaoCell descricao={d.descricao ?? ''} tipo={d.tipo} />
+                  </div>
+                </Td>
+                <Td><span style={{ color: 'var(--muted-foreground)', fontWeight: 700, fontSize: 12 }}>{brl(d.valor || 0)}</span></Td>
+                <Td><RiscoDot nivel={d.severidade} /></Td>
+                <Td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--green)', background: 'var(--green)20', border: '1px solid var(--green)40', borderRadius: 20, padding: '2px 8px', whiteSpace: 'nowrap' }}>
+                      Resolvido
+                    </span>
+                    <button
+                      onClick={() => onResolver(d)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-foreground)', fontSize: 11, textDecoration: 'underline', padding: 0 }}
+                    >
+                      editar
+                    </button>
+                  </div>
+                  {ori?.observacao && (
+                    <div style={{ fontSize: 10, color: 'var(--muted-foreground)', marginTop: 2, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ori.observacao}
+                    </div>
+                  )}
+                </Td>
+              </Tr>
+            )
+          })}
+        </Table>
+      )}
+    </div>
+  )
+}
+
 // ── Cards resumidos + painel central com backdrop blur ────────────────────
 type GrupoItem = { id: string; icon: string; titulo: string; subtitulo: string; nivel: string; cor: string; total: number; itens: DivType[] }
 
-function GrupoCards({ grupos, orientacoesSalvas, onResolver }: {
+function GrupoCards({ grupos, orientacoesSalvas, onResolver, onResolverMultiplos }: {
   grupos: GrupoItem[]
   orientacoesSalvas: Record<string, OrientacaoSalva>
   onResolver: (d: DivType) => void
+  onResolverMultiplos: (divs: DivType[]) => void
 }) {
   const [aberto, setAberto] = useState<string | null>(null)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const grupo = grupos.find(g => g.id === aberto) || null
+
+  // Limpa seleção ao trocar de grupo
+  const abrirGrupo = (id: string) => { setAberto(id); setSelecionados(new Set()) }
+
+  const toggleSel = (chave: string) => setSelecionados(prev => {
+    const next = new Set(prev)
+    next.has(chave) ? next.delete(chave) : next.add(chave)
+    return next
+  })
+
+  const toggleTodos = () => {
+    if (!grupo) return
+    const chavesPendentes = grupo.itens
+      .filter(d => !orientacoesSalvas[(d.banco_lancamento_id || d.compra_id || d.despesa_id) ?? '']?.resolvida)
+      .map(d => String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao))
+    setSelecionados(prev => prev.size === chavesPendentes.length ? new Set() : new Set(chavesPendentes))
+  }
 
   return (
     <>
       {/* Grid de cards resumidos */}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${grupos.length}, 1fr)`, gap: 12, marginBottom: 18 }}>
         {grupos.map(g => {
-          const pendentes = g.itens.filter(d => {
+          const itensPendentes = g.itens.filter(d => {
             const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
             return !orientacoesSalvas[chave || '']?.resolvida
-          }).length
+          })
+          const totalPendente = itensPendentes.reduce((s, d) => s + (d.valor || 0), 0)
+          const resolvidos = g.itens.length - itensPendentes.length
           return (
             <button
               key={g.id}
-              onClick={() => setAberto(g.id)}
+              onClick={() => abrirGrupo(g.id)}
               style={{
                 background: 'var(--surface2)', border: `1px solid var(--border)`,
                 borderRadius: 12, padding: '16px 18px', textAlign: 'left', cursor: 'pointer',
@@ -369,13 +497,13 @@ function GrupoCards({ grupos, orientacoesSalvas, onResolver }: {
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>{g.titulo}</div>
               <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 12 }}>{g.subtitulo}</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ fontSize: 18, fontWeight: 800, color: g.cor }}>{brl(g.total)}</span>
+                <span style={{ fontSize: 18, fontWeight: 800, color: itensPendentes.length === 0 ? 'var(--green)' : g.cor }}>{brl(totalPendente)}</span>
               </div>
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{g.itens.length} item{g.itens.length !== 1 ? 's' : ''}</span>
-                {pendentes > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, background: `${g.cor}25`, color: g.cor, border: `1px solid ${g.cor}50`, borderRadius: 20, padding: '2px 8px' }}>
-                    {pendentes} pendente{pendentes !== 1 ? 's' : ''}
+                <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{itensPendentes.length} pendente{itensPendentes.length !== 1 ? 's' : ''}</span>
+                {resolvidos > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, background: 'var(--green)25', color: 'var(--green)', border: '1px solid var(--green)50', borderRadius: 20, padding: '2px 8px' }}>
+                    {resolvidos} resolvido{resolvidos !== 1 ? 's' : ''}
                   </span>
                 )}
               </div>
@@ -416,6 +544,23 @@ function GrupoCards({ grupos, orientacoesSalvas, onResolver }: {
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                 <RiscoDot nivel={grupo.nivel} />
                 <span style={{ fontSize: 16, fontWeight: 800, color: grupo.cor }}>{brl(grupo.total)}</span>
+                {selecionados.size > 0 && (
+                  <button
+                    onClick={() => {
+                      const divsSel = grupo.itens.filter(d => {
+                        const chave = String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao)
+                        return selecionados.has(chave)
+                      })
+                      onResolverMultiplos(divsSel)
+                    }}
+                    style={{
+                      background: grupo.cor, border: 'none', borderRadius: 8, padding: '6px 12px',
+                      cursor: 'pointer', color: '#fff', fontSize: 12, fontWeight: 700,
+                    }}
+                  >
+                    Resolver {selecionados.size} selecionado{selecionados.size !== 1 ? 's' : ''}
+                  </button>
+                )}
                 <button
                   onClick={() => setAberto(null)}
                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-foreground)', fontSize: 20, lineHeight: 1, padding: 4 }}
@@ -425,19 +570,61 @@ function GrupoCards({ grupos, orientacoesSalvas, onResolver }: {
 
             {/* Tabela scrollável */}
             <div style={{ overflowY: 'auto', flex: 1 }}>
-              <Table headers={['Descrição', 'Valor', 'Risco', 'Resolução']}>
-                {grupo.itens.map(d => {
-                  const valCor = grupo.nivel === 'alto' ? 'var(--red)' : grupo.nivel === 'medio' ? 'var(--orange)' : 'var(--text)'
+              {(() => {
+                const pendentes = grupo.itens.filter(d => {
+                  const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+                  return !orientacoesSalvas[chave || '']?.resolvida
+                })
+                const resolvidos = grupo.itens.filter(d => {
+                  const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+                  return !!orientacoesSalvas[chave || '']?.resolvida
+                })
+                const valCor = grupo.nivel === 'alto' ? 'var(--red)' : grupo.nivel === 'medio' ? 'var(--orange)' : 'var(--text)'
+                const renderRow = (d: DivType, cor: string) => {
+                  const chave = String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao)
                   return (
-                    <Tr key={String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao)}>
+                    <Tr key={chave}>
+                      <Td>
+                        <input
+                          type="checkbox"
+                          checked={selecionados.has(chave)}
+                          onChange={() => toggleSel(chave)}
+                          style={{ cursor: 'pointer', width: 15, height: 15, accentColor: grupo.cor }}
+                        />
+                      </Td>
                       <Td><DescricaoCell descricao={d.descricao ?? ''} tipo={d.tipo} /></Td>
-                      <Td><div style={{ width: 120, whiteSpace: 'nowrap' }}><span style={{ color: valCor, fontWeight: 700 }}>{brl(d.valor || 0)}</span></div></Td>
+                      <Td><div style={{ width: 120, whiteSpace: 'nowrap' }}><span style={{ color: cor, fontWeight: 700 }}>{brl(d.valor || 0)}</span></div></Td>
                       <Td><div style={{ width: 90, whiteSpace: 'nowrap' }}><RiscoDot nivel={d.severidade} /></div></Td>
                       <Td><div style={{ width: 130, whiteSpace: 'nowrap' }}><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={onResolver} /></div></Td>
                     </Tr>
                   )
-                })}
-              </Table>
+                }
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', borderTop: '1px solid var(--border)' }}>
+                      <input
+                        type="checkbox"
+                        checked={selecionados.size > 0 && selecionados.size === pendentes.length}
+                        ref={el => { if (el) el.indeterminate = selecionados.size > 0 && selecionados.size < pendentes.length }}
+                        onChange={toggleTodos}
+                        style={{ cursor: 'pointer', width: 15, height: 15 }}
+                      />
+                      <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>
+                        {selecionados.size > 0 ? `${selecionados.size} selecionado${selecionados.size !== 1 ? 's' : ''}` : 'Selecionar todos'}
+                      </span>
+                    </div>
+                    <Table headers={['', 'Descrição', 'Valor', 'Risco', 'Resolução']}>
+                      {pendentes.length > 0
+                        ? pendentes.map(d => renderRow(d, valCor))
+                        : <Tr><Td><span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>Nenhum item pendente</span></Td></Tr>
+                      }
+                    </Table>
+                    {resolvidos.length > 0 && (
+                      <AccordionResolvidos itens={resolvidos} orientacoesSalvas={orientacoesSalvas} onResolver={onResolver} selecionados={selecionados} toggleSel={toggleSel} />
+                    )}
+                  </>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -518,9 +705,12 @@ function ModalResolucao({
   }
 
   const temSubform = !!acaoAtual?.subform
+  const obsObrigatoria = modal.acaoId === 'imposto_tributo'
+  const isBulk = (modal.divergenciasBulk?.length ?? 0) > 1
+  const bulkCount = modal.divergenciasBulk?.length ?? 1
 
   return (
-    <Modal title={temRegistro ? 'Editar Resolução' : 'Resolver Divergência'} onClose={() => setModal(null)} className="!max-w-3xl">
+    <Modal title={isBulk ? `Resolver ${bulkCount} itens` : (temRegistro ? 'Editar Resolução' : 'Resolver Divergência')} onClose={() => setModal(null)} className="!max-w-3xl">
       {/* Layout 2 colunas */}
       <div className="grid grid-cols-2 gap-5">
 
@@ -529,9 +719,9 @@ function ModalResolucao({
           {/* Info da divergência */}
           <div className="rounded-lg bg-secondary border border-border p-3">
             <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">
-              {labelTipo[div.tipo] || div.tipo}
+              {isBulk ? `${bulkCount} itens selecionados` : (labelTipo[div.tipo] || div.tipo)}
             </p>
-            <p className="text-sm text-foreground leading-snug">{div.descricao}</p>
+            <p className="text-sm text-foreground leading-snug">{isBulk ? 'A mesma justificativa será aplicada a todos os itens selecionados.' : div.descricao}</p>
             {div.valor && (
               <p className="text-xs text-muted-foreground mt-2">
                 Valor: <strong className="text-foreground">{brl(div.valor)}</strong>
@@ -647,14 +837,16 @@ function ModalResolucao({
           {/* Observação */}
           <div className={temSubform ? '' : 'flex-1'}>
             <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
-              Observação <span className="font-normal normal-case opacity-60">(opcional)</span>
+              {obsObrigatoria
+                ? <>Descrição do imposto/tributo <span className="text-red-400">*</span></>
+                : <>Observação <span className="font-normal normal-case opacity-60">(opcional)</span></>}
             </label>
             <textarea
               value={modal.texto}
               onChange={e => setModal(m => m ? { ...m, texto: e.target.value } : null)}
-              placeholder="Comentário livre para registro interno..."
+              placeholder={obsObrigatoria ? 'Ex: DARF IRPJ competência maio/2026...' : 'Comentário livre para registro interno...'}
               rows={temSubform ? 3 : 5}
-              className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+              className={`w-full rounded-lg border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none ${obsObrigatoria && !modal.texto.trim() ? 'border-red-500/50 focus:ring-red-500' : 'border-border'}`}
             />
           </div>
 
@@ -677,7 +869,7 @@ function ModalResolucao({
             </div>
             <div className="flex gap-2">
               <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
-              <Btn onClick={onSalvar} disabled={salvando || (!modal.acaoId && !modal.texto.trim() && !modal.resolvida)}>
+              <Btn onClick={onSalvar} disabled={salvando || (!modal.acaoId && !modal.texto.trim() && !modal.resolvida) || (obsObrigatoria && !modal.texto.trim())}>
                 {salvando ? 'Salvando...' : temRegistro ? 'Atualizar' : 'Salvar'}
               </Btn>
             </div>
