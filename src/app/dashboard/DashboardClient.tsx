@@ -20,17 +20,19 @@ import Usuarios from '@/components/sections/Usuarios'
 import Ferramentas from '@/components/sections/Ferramentas'
 import BuscaLancamentos from '@/components/sections/BuscaLancamentos'
 import XmlParaPdf from '@/components/sections/XmlParaPdf'
+import NotasServico from '@/components/sections/NotasServico'
 import { RefreshCw, Building2, ArrowRight } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 export type Section =
-  | 'visao-geral' | 'compras' | 'notas' | 'sped' | 'banco'
+  | 'visao-geral' | 'compras' | 'notas' | 'notas-servico' | 'sped' | 'banco'
   | 'despesas' | 'cruzamento' | 'projecao' | 'config' | 'clientes' | 'usuarios' | 'ferramentas' | 'busca' | 'xml-pdf'
 
 const SECTION_TITLES: Record<Section, [string, string]> = {
   'visao-geral': ['Visão Geral', 'Painel de alertas e KPIs do mês'],
-  'compras':     ['Compras', 'Registro de compras e notas de entrada'],
-  'notas':       ['Notas Fiscais', 'NFs emitidas no período'],
+  'compras':       ['Compras', 'Registro de compras e notas de entrada'],
+  'notas':         ['Notas Fiscais', 'NFs emitidas no período'],
+  'notas-servico': ['Notas de Serviço', 'NFS-e recebidas no período'],
   'sped':        ['SPED EFD', 'Importação e documentos da escrituração fiscal digital'],
   'banco':       ['Banco', 'Movimentações bancárias'],
   'despesas':    ['Despesas', 'Despesas operacionais do mês'],
@@ -72,7 +74,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Seções que precisam de um cliente ativo
-  const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','sped','banco','despesas','cruzamento','projecao','config']
+  const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','notas-servico','sped','banco','despesas','cruzamento','projecao','config']
   const precisaCliente = SECOES_COM_CLIENTE.includes(secao)
 
   const supabase = createClient()
@@ -173,8 +175,9 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
           {precisaCliente && clienteAtivo && (
             <>
               {secao === 'visao-geral' && <VisaoGeral {...sectionProps} cliente={clienteAtivo} />}
-              {secao === 'compras'     && <Compras {...sectionProps} />}
-              {secao === 'notas'       && <NotasFiscais {...sectionProps} />}
+              {secao === 'compras'       && <Compras {...sectionProps} />}
+              {secao === 'notas'         && <NotasFiscais {...sectionProps} />}
+              {secao === 'notas-servico' && <NotasServico {...sectionProps} />}
               {secao === 'sped'        && <Sped {...sectionProps} />}
               {secao === 'banco'       && <Banco {...sectionProps} />}
               {secao === 'despesas'    && <Despesas {...sectionProps} />}

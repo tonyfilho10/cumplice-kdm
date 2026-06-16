@@ -31,6 +31,7 @@ model Cliente {
   contas_bancarias   ContaBancaria[]
   periodos_fechados  PeriodoFechado[]
   usuario_clientes UsuarioCliente[]
+  notas_servico    NotaServico[]
 
   @@map("clientes")
 }
@@ -139,8 +140,9 @@ model BancoLancamento {
   created_at       DateTime @default(now())
 
   cliente      Cliente     @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
-  nota_fiscal  NotaFiscal? @relation("NotaConciliada", fields: [nota_fiscal_id], references: [id])
-  divergencia  Divergencia[]
+  nota_fiscal   NotaFiscal?  @relation("NotaConciliada", fields: [nota_fiscal_id], references: [id])
+  nota_servico  NotaServico? @relation("NfServicoConciliada")
+  divergencia   Divergencia[]
 
   @@map("banco_lancamentos")
 }
@@ -223,6 +225,27 @@ model PeriodoFechado {
 
   @@unique([cliente_id, periodo])
   @@map("periodos_fechados")
+}
+
+model NotaServico {
+  id                  String   @id @default(uuid())
+  cliente_id          String
+  periodo             String   // "YYYY-MM"
+  numero              String
+  data                DateTime @db.Date
+  prestador           String
+  cnpj_prestador      String?
+  discriminacao       String?
+  codigo_servico      String?
+  valor               Decimal
+  status              String   @default("pendente") // pendente | conciliada
+  banco_lancamento_id String?  @unique
+  created_at          DateTime @default(now())
+
+  cliente          Cliente          @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  banco_lancamento BancoLancamento? @relation("NfServicoConciliada", fields: [banco_lancamento_id], references: [id])
+
+  @@map("notas_servico")
 }
 
 model Threshold {
