@@ -348,3 +348,14 @@ export function calcularLucroPresumido(fatMes: number) {
   const csll = bcCSLL * 0.09
   return { total: pis + cofins + irpj + csll, pis, cofins, irpj, csll }
 }
+
+// Lucro Real: PIS/COFINS não-cumulativo + IRPJ/CSLL sobre lucro estimado
+// Margem de lucro estimada pode ser ajustada — padrão 15% para serviços
+export function calcularLucroReal(fatMes: number, margemLucro = 0.15) {
+  const pis = fatMes * 0.0165
+  const cofins = fatMes * 0.076
+  const lucro = fatMes * margemLucro
+  const irpj = lucro * 0.15
+  const csll = lucro * 0.09
+  return { total: pis + cofins + irpj + csll, pis, cofins, irpj, csll, lucro, margemLucro }
+}
