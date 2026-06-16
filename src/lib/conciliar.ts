@@ -27,38 +27,70 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
   const resultado = cruzarDados(clienteId, periodo, adaptBanco, adaptNotas, adaptCompras, adaptDespesas, threshAdapt, adaptSped)
 
   // Persiste conciliações encontradas (notas_fiscais)
+  // Entradas: só concilia com valor exato. Saídas: apenas vincula NF — status via bloco de reavaliação.
   let conciliados = 0
+  const bancoPorId = new Map(adaptBanco.map(b => [b.id, b]))
+  // IDs efetivamente conciliados (usados para filtrar pendentes e reavaliação de saídas)
+  const entradaConciliadaIds = new Set<string>()
+  const saidaComNfIds = new Set<string>()
+
+  // Classificar conciliações por tipo para batch updates
+  const entradaOkIds: string[] = []         // banco ids → status: ok
+  const saidaNfLinks: { banco_id: string; nf_id: string }[] = []  // saída → vincular NF
+  const nfConciliadasIds: string[] = []      // NF ids → conciliada: true
+  const nfBancoLinks: { nf_id: string; banco_id: string }[] = []  // NF → banco_lancamento_id
+
   for (const { banco_id, nf_id, diferenca } of resultado.conciliacoes) {
-    await Promise.all([
-      prisma.bancoLancamento.update({
-        where: { id: banco_id },
-        data: { nota_fiscal_id: nf_id, status: diferenca === 0 ? 'ok' : 'parcial' },
-      }).catch(() => {}),
-      prisma.notaFiscal.update({
-        where: { id: nf_id },
-        data: { conciliada: true, banco_lancamento_id: banco_id },
-      }).catch(() => {}),
-    ])
+    const isEntrada = bancoPorId.get(banco_id)?.tipo === 'entrada'
+    if (isEntrada && diferenca !== 0) continue
+    nfConciliadasIds.push(nf_id)
+    nfBancoLinks.push({ nf_id, banco_id })
+    if (isEntrada) {
+      entradaOkIds.push(banco_id)
+      entradaConciliadaIds.add(banco_id)
+    } else {
+      saidaNfLinks.push({ banco_id, nf_id })
+      saidaComNfIds.add(banco_id)
+    }
     conciliados++
   }
 
-  // Persiste conciliações via SPED (venda, compra, despesa) — marca lançamento como conciliado
   for (const { banco_id, diferenca, via } of resultado.conciliacoesSped) {
-    if (via === 'venda' || via === 'compra' || via === 'despesa') {
-      await prisma.bancoLancamento.update({
-        where: { id: banco_id },
-        data: { status: diferenca === 0 ? 'ok' : 'parcial' },
-      }).catch(() => {})
-      conciliados++
+    if (via !== 'venda' && via !== 'compra' && via !== 'despesa') continue
+    const isEntrada = via === 'venda' || bancoPorId.get(banco_id)?.tipo === 'entrada'
+    if (isEntrada && diferenca !== 0) continue
+    if (isEntrada) {
+      entradaOkIds.push(banco_id)
+      entradaConciliadaIds.add(banco_id)
+    } else {
+      saidaComNfIds.add(banco_id)
     }
+    conciliados++
   }
 
-  // Marca como "pendente" entradas que não foram conciliadas
-  const conciliadosIds = new Set(resultado.conciliacoes.map(c => c.banco_id))
+  // Batch: entradas ok + NF conciliadas (updateMany = 2 queries)
+  await Promise.all([
+    entradaOkIds.length > 0
+      ? prisma.bancoLancamento.updateMany({ where: { id: { in: entradaOkIds } }, data: { status: 'ok' } })
+      : Promise.resolve(),
+    nfConciliadasIds.length > 0
+      ? prisma.notaFiscal.updateMany({ where: { id: { in: nfConciliadasIds } }, data: { conciliada: true } })
+      : Promise.resolve(),
+    // Saídas: vincular nota_fiscal_id individualmente (valores diferentes por linha)
+    ...saidaNfLinks.map(({ banco_id, nf_id }) =>
+      prisma.bancoLancamento.update({ where: { id: banco_id }, data: { nota_fiscal_id: nf_id } }).catch(() => {})
+    ),
+    // NF: vincular banco_lancamento_id individualmente
+    ...nfBancoLinks.map(({ nf_id, banco_id }) =>
+      prisma.notaFiscal.update({ where: { id: nf_id }, data: { banco_lancamento_id: banco_id } }).catch(() => {})
+    ),
+  ])
+
+  // Batch: pendentes (1 query)
   const pendentes = adaptBanco.filter(b =>
     b.tipo === 'entrada' &&
     b.valor > 0 &&
-    !conciliadosIds.has(b.id) &&
+    !entradaConciliadaIds.has(b.id) &&
     b.status !== 'ok'
   )
   if (pendentes.length > 0) {
@@ -68,16 +100,13 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
     })
   }
 
-  // Saídas: só conciliado ('ok') com NF vinculada E comprovante anexado.
-  // Pagamento de tributos (sem NF) concilia apenas com comprovante.
-  const conciliacoesSpedIds = new Set(
-    resultado.conciliacoesSped.filter(c => ['venda', 'compra', 'despesa'].includes(c.via)).map(c => c.banco_id)
-  )
+  // Batch saídas: agrupar por status-alvo → 1 query por status (máx 4 queries)
+  const saidaByStatus: Record<string, string[]> = { ok: [], parcial: [], pendente: [], sem_nf: [] }
   for (const b of adaptBanco) {
     if (b.tipo !== 'saida') continue
     const temComprovante = !!b.comprovante_url
     const isTributo = b.categoria === 'Imposto/Tributo'
-    const temNF = !!b.nota_fiscal_id || !!b.nf_vinculada || conciliadosIds.has(b.id) || conciliacoesSpedIds.has(b.id)
+    const temNF = !!b.nota_fiscal_id || !!b.nf_vinculada || saidaComNfIds.has(b.id)
 
     let novoStatus: 'ok' | 'pendente' | 'sem_nf' | 'parcial'
     if (isTributo) {
@@ -90,10 +119,15 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
       novoStatus = 'sem_nf'
     }
 
-    if (novoStatus !== b.status) {
-      await prisma.bancoLancamento.update({ where: { id: b.id }, data: { status: novoStatus } }).catch(() => {})
-    }
+    if (novoStatus !== b.status) saidaByStatus[novoStatus].push(b.id)
   }
+  await Promise.all(
+    Object.entries(saidaByStatus)
+      .filter(([, ids]) => ids.length > 0)
+      .map(([status, ids]) =>
+        prisma.bancoLancamento.updateMany({ where: { id: { in: ids } }, data: { status } })
+      )
+  )
 
   return {
     conciliados,
