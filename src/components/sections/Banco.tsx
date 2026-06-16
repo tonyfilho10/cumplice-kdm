@@ -8,7 +8,7 @@ import {
   RowActions, Select, Table, Td, Toast, Tr, brl, fmtData,
 } from '@/components/ui'
 import { Button } from '@/components/ui/button'
-import { Upload, Plus, Landmark, FileDown } from 'lucide-react'
+import { Upload, Plus, Landmark, FileDown, GitMerge } from 'lucide-react'
 import ContasBancarias from '@/components/ContasBancarias'
 import { checkPeriodoAberto } from '@/lib/periodo-check-client'
 import UploadComprovante from '@/components/UploadComprovante'
@@ -28,6 +28,23 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
   const [excluindo, setExcluindo] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [importando, setImportando] = useState(false)
+  const [conciliando, setConciliando] = useState(false)
+
+  async function rodarConciliacao() {
+    setConciliando(true)
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/conciliar?periodo=${periodo}`, { method: 'POST' })
+      const result = await res.json()
+      if (res.ok) {
+        setToast(`${result.conciliados} conciliado(s) · ${result.a_conciliar} a conciliar (${result.pct_conciliado}%)`)
+        await carregar()
+        onRecarregar()
+      } else {
+        setToast('Erro ao conciliar')
+      }
+    } catch { setToast('Erro ao conciliar') }
+    setConciliando(false)
+  }
 
   // Form manual
   const [data, setData] = useState(hoje)
@@ -163,6 +180,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
   // ── Filtro e consolidado ──────────────────────────────────────────────────
   const [contaFiltro, setContaFiltro] = useState<string | null>(null)
   const [comprovanteFiltro, setComprovanteFiltro] = useState<'todos' | 'com' | 'sem'>('todos')
+  const [notaFiltro, setNotaFiltro] = useState<'todos' | 'sem-entrada' | 'sem-saida'>('todos')
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [gerandoPdf, setGerandoPdf] = useState(false)
 
@@ -172,10 +190,16 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
     .filter(l => !contaFiltro || l.conta === contaFiltro)
     .filter(l => {
       if (comprovanteFiltro === 'todos') return true
-      // entradas não precisam de comprovante, então nunca entram no filtro "sem comprovante"
       if (comprovanteFiltro === 'sem' && l.tipo === 'entrada') return false
       const temComprovante = !!(l as any).comprovante_url
       return comprovanteFiltro === 'com' ? temComprovante : !temComprovante
+    })
+    .filter(l => {
+      if (notaFiltro === 'todos') return true
+      const temNF = !!(l.nota_fiscal_id || l.nf_vinculada)
+      if (notaFiltro === 'sem-entrada') return l.tipo === 'entrada' && !temNF
+      if (notaFiltro === 'sem-saida') return l.tipo === 'saida' && !temNF
+      return true
     })
 
   // Consolidado por banco
@@ -416,6 +440,17 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
             <option value="sem">Sem comprovante</option>
           </select>
 
+          {/* Filtro por nota fiscal */}
+          <select
+            value={notaFiltro}
+            onChange={e => setNotaFiltro(e.target.value as 'todos' | 'sem-entrada' | 'sem-saida')}
+            className="h-9 rounded-lg border border-border bg-secondary text-foreground text-sm px-3 pr-8 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+          >
+            <option value="todos">Nota fiscal: todos</option>
+            <option value="sem-entrada">Entradas sem NF</option>
+            <option value="sem-saida">Saídas sem NF</option>
+          </select>
+
           {/* Resumo da conta selecionada */}
           {(() => {
             const dados = contaFiltro
@@ -457,13 +492,25 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         }>
           <span className="flex items-center justify-between w-full gap-3">
             <span>{contaFiltro ? `Movimentações — ${contaFiltro}` : 'Movimentações Bancárias'}</span>
-            {selecionados.size > 0 && (
-              <Btn onClick={baixarPdfSelecionados} disabled={gerandoPdf} className="gap-1.5 shrink-0">
-                <FileDown className="h-3.5 w-3.5" />
-                {gerandoPdf ? 'Gerando...' : `Baixar PDF (${selecionados.size})`}
+            <span className="flex items-center gap-2 shrink-0">
+              {selecionados.size > 0 && (
+                <Btn onClick={baixarPdfSelecionados} disabled={gerandoPdf} className="gap-1.5">
+                  <FileDown className="h-3.5 w-3.5" />
+                  {gerandoPdf ? 'Gerando...' : `Baixar PDF (${selecionados.size})`}
+                </Btn>
+              )}
+              <Btn onClick={rodarConciliacao} disabled={conciliando} className="gap-1.5">
+                <GitMerge className="h-3.5 w-3.5" />
+                {conciliando ? 'Conciliando...' : 'Conciliar Agora'}
               </Btn>
-            )}
+            </span>
           </span>
+          {conciliando && (
+            <div className="w-full rounded-full overflow-hidden bg-secondary h-1 mt-3">
+              <div className="h-full rounded-full bg-primary" style={{ width: '40%', animation: 'indeterminate-progress 1.4s ease-in-out infinite' }} />
+              <style>{`@keyframes indeterminate-progress { 0% { transform: translateX(-100%) scaleX(0.4); } 50% { transform: translateX(100%) scaleX(0.8); } 100% { transform: translateX(250%) scaleX(0.4); } }`}</style>
+            </div>
+          )}
         </CardTitle>
 
         <div className="overflow-x-auto">
@@ -535,7 +582,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 
               {/* Status */}
               <td className="py-2.5 px-3 whitespace-nowrap">
-                <StatusBancario status={b.status} />
+                <StatusBancario status={b.status} tipo={b.tipo} temNF={!!(b.nota_fiscal_id || b.nf_vinculada)} temComprovante={!!b.comprovante_url} />
               </td>
 
               {/* Comprovante */}
@@ -613,7 +660,12 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 }
 
 // ── Subcomponente: status legível dos lançamentos ───────────────────────────
-function StatusBancario({ status }: { status: string | undefined }) {
+function StatusBancario({ status, tipo, temNF, temComprovante }: {
+  status: string | undefined
+  tipo?: string
+  temNF?: boolean
+  temComprovante?: boolean
+}) {
   const cfg = {
     ok:       { label: 'Conciliado',   dot: 'bg-green-500',  text: 'text-green-400',  bg: 'bg-green-500/10  border-green-500/20'  },
     parcial:  { label: 'Parcialmente', dot: 'bg-orange-400', text: 'text-orange-300', bg: 'bg-orange-500/10 border-orange-500/20' },
@@ -621,11 +673,28 @@ function StatusBancario({ status }: { status: string | undefined }) {
     pendente: { label: 'A conciliar',  dot: 'bg-slate-400',  text: 'text-slate-400',  bg: 'bg-slate-500/10  border-slate-500/20'  },
   }
   const c = cfg[status as keyof typeof cfg] ?? cfg.pendente
+  const isSaidaParcial = status === 'parcial' && tipo === 'saida'
+  const isEntradaPendente = (status === 'pendente' || status === 'sem_nf') && tipo === 'entrada'
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${c.bg} ${c.text}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
-      {c.label}
-    </span>
+    <div className="flex flex-col gap-1">
+      <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap ${c.bg} ${c.text}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+        {c.label}
+      </span>
+      {isSaidaParcial && (
+        <div className="flex gap-1.5 pl-0.5">
+          <span className={`text-[10px] font-medium ${temNF ? 'text-green-500' : 'text-red-400'}`}>
+            {temNF ? 'NF ok' : 'sem NF'}
+          </span>
+          <span className={`text-[10px] font-medium ${temComprovante ? 'text-green-500' : 'text-red-400'}`}>
+            {temComprovante ? 'comp. ok' : 'sem comp.'}
+          </span>
+        </div>
+      )}
+      {isEntradaPendente && (
+        <span className="text-[10px] font-medium text-red-400 pl-0.5">sem NF de entrada</span>
+      )}
+    </div>
   )
 }
 

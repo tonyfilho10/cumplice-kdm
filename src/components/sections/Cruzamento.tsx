@@ -6,7 +6,7 @@ import { cruzarDados } from '@/lib/crossref'
 import type { BancoLancamento, Compra, Despesa, DocumentoSped, NotaFiscal } from '@/lib/supabase/types'
 import { AlertBar, Badge, Btn, Card, CardTitle, KpiCard, Modal, Table, Td, Toast, Tr, brl, fmtData } from '@/components/ui'
 import { Button } from '@/components/ui/button'
-import { GitMerge, MessageSquare, CheckCircle2, ChevronRight, Copy, X } from 'lucide-react'
+import { MessageSquare, CheckCircle2, ChevronRight, Copy, X } from 'lucide-react'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -76,7 +76,6 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
   const [resultado, setResultado] = useState<ReturnType<typeof cruzarDados> | null>(null)
   const [toast, setToast] = useState('')
   const [carregando, setCarregando] = useState(true)
-  const [conciliando, setConciliando] = useState(false)
   const [modal, setModal] = useState<ModalState | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [orientacoesSalvas, setOrientacoesSalvas] = useState<Record<string, OrientacaoSalva>>({})
@@ -199,7 +198,7 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
       })
     }
 
-    setToast(modal.resolvida ? '✅ Marcado como resolvido!' : '💬 Orientação salva!')
+    setToast(modal.resolvida ? 'Marcado como resolvido!' : 'Orientação salva!')
     setModal(null)
     setSalvando(false)
     await carregarOrientacoes()
@@ -221,21 +220,6 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
     setModal(null)
     setSalvando(false)
     await carregarOrientacoes()
-  }
-
-  // ── Conciliação automática ───────────────────────────────────────────────
-  async function rodarConciliacao() {
-    setConciliando(true)
-    try {
-      const res = await fetch(`/api/clientes/${clienteId}/conciliar?periodo=${periodo}`, { method: 'POST' })
-      const result = await res.json()
-      if (result.ok) {
-        setToast(`✅ ${result.conciliados} conciliado(s) · ${result.a_conciliar} a conciliar (${result.pct_conciliado}%)`)
-        await carregar()
-        onRecarregar()
-      } else setToast(`Erro: ${result.erro}`)
-    } catch { setToast('Erro ao conciliar') }
-    setConciliando(false)
   }
 
   useEffect(() => { setResultado(null); setCarregando(true) }, [clienteId, periodo])
@@ -288,15 +272,8 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
-        <Button onClick={rodarConciliacao} disabled={conciliando} size="sm" className="gap-2">
-          <GitMerge className={`h-3.5 w-3.5 ${conciliando ? 'animate-spin' : ''}`} />
-          {conciliando ? 'Conciliando...' : 'Conciliar Agora'}
-        </Button>
-      </div>
-
       <AlertBar variant="warn">
-        <span style={{ fontSize: 18 }}>{totalDiverg === 0 ? '✅' : '🔍'}</span>
+        <span style={{ fontSize: 18 }}>{totalDiverg === 0 ? '—' : '!'}</span>
         <div>
           Cruzamento identificou <strong>{totalDiverg} divergência{totalDiverg !== 1 ? 's' : ''} pendente{totalDiverg !== 1 ? 's' : ''}</strong>.
           {totalDiverg > 0 ? ' Clique em "Resolver" em cada item para orientar o cliente.' : ' Tudo conciliado!'}
@@ -316,16 +293,16 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
         orientacoesSalvas={orientacoesSalvas}
         onResolver={abrirModal}
         grupos={[
-          { id: 'rec',  icon: '🚨', titulo: 'Entradas sem NF Emitida',        subtitulo: 'Possível omissão de receita',                nivel: 'alto',  cor: 'var(--red)',    total: recNaoDeclarada.reduce((s,d)=>s+(d.valor||0),0), itens: recNaoDeclarada },
-          { id: 'pag',  icon: '📤', titulo: 'Pagamentos sem NF no SPED',       subtitulo: 'Saída bancária sem NF de compra',            nivel: 'medio', cor: 'var(--orange)', total: pagSemNfSped.reduce((s,d)=>s+(d.valor||0),0),    itens: pagSemNfSped    },
+          { id: 'rec',  icon: '',    titulo: 'Entradas sem NF Emitida',        subtitulo: 'Possível omissão de receita',                nivel: 'alto',  cor: 'var(--red)',    total: recNaoDeclarada.reduce((s,d)=>s+(d.valor||0),0), itens: recNaoDeclarada },
+          { id: 'pag',  icon: '',    titulo: 'Pagamentos sem NF no SPED',       subtitulo: 'Saída bancária sem NF de compra',            nivel: 'medio', cor: 'var(--orange)', total: pagSemNfSped.reduce((s,d)=>s+(d.valor||0),0),    itens: pagSemNfSped    },
           { id: 'cmp',  icon: '⚠️', titulo: 'Compras sem NF de Entrada',       subtitulo: 'Crédito fiscal perdido e risco de autuação', nivel: 'medio', cor: 'var(--orange)', total: comprasSemNF.reduce((s,d)=>s+(d.valor||0),0),    itens: comprasSemNF    },
-          { id: 'desp', icon: '💳', titulo: 'Despesas sem Comprovante Fiscal', subtitulo: 'Não dedutível — risco de glosa',             nivel: 'baixo', cor: 'var(--yellow)', total: despSemDoc.reduce((s,d)=>s+(d.valor||0),0),      itens: despSemDoc      },
+          { id: 'desp', icon: '',    titulo: 'Despesas sem Comprovante Fiscal', subtitulo: 'Não dedutível — risco de glosa',             nivel: 'baixo', cor: 'var(--yellow)', total: despSemDoc.reduce((s,d)=>s+(d.valor||0),0),      itens: despSemDoc      },
         ].filter(g => g.itens.length > 0)}
       />
 
       {totalDiverg === 0 && divergencias.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--green)' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>·</div>
           <div style={{ fontSize: 16, fontWeight: 700 }}>Nenhuma divergência encontrada!</div>
           <div style={{ fontSize: 13, color: 'var(--muted-foreground)', marginTop: 6 }}>Todos os dados estão conciliados.</div>
         </div>

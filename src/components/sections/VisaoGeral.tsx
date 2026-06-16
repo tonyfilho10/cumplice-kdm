@@ -210,7 +210,7 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
       <div className="mb-5 rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-base">🧮</span>
+            <span className="text-base"></span>
             <span className="text-sm font-semibold text-foreground">Simulação de CMV com Estoque</span>
             <span className="text-[10px] bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded font-bold uppercase">Temporário</span>
           </div>
@@ -257,19 +257,19 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
       <Card style={{ marginBottom: 20 }}>
         <CardTitle>Cruzamento Rápido do Mês</CardTitle>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 20px 1fr 20px 1fr 20px 1fr', gap: 4, alignItems: 'center' }}>
-          <CruzCol titulo="🛒 Compras" valor={brl(total_compras)} sub={`${compras.length} notas`} color="var(--accent2)"
-            warn={compras_sem_nf > 0 ? `${brl(compras_sem_nf)} s/ NF ⚠` : undefined} />
+          <CruzCol titulo="Compras" valor={brl(total_compras)} sub={`${compras.length} notas`} color="var(--accent2)"
+            warn={compras_sem_nf > 0 ? `${brl(compras_sem_nf)} s/ NF` : undefined} />
           <Arrow />
-          <CruzCol titulo="🧾 NF Vendas" valor={brl(faturamento_nf)}
+          <CruzCol titulo="NF Vendas" valor={brl(faturamento_nf)}
             sub={`${notasVenda.length} vendas${notasRemessa.length > 0 ? ` · ${notasRemessa.length} remessas excl.` : ''}`}
             color="var(--green)"
             warn={notasRemessa.length > 0 ? `${brl(total_remessas)} excluídos` : undefined} />
           <Arrow />
-          <CruzCol titulo="🏦 Banco" valor={brl(entradas_banco)} sub={`${banco.filter(b => b.tipo === 'entrada').length} entradas`}
-            color="var(--gold)" warn={divergencia_banco_nf > 0 ? `+${brl(divergencia_banco_nf)} ⚠` : undefined} />
+          <CruzCol titulo="Banco" valor={brl(entradas_banco)} sub={`${banco.filter(b => b.tipo === 'entrada').length} entradas`}
+            color="var(--gold)" warn={divergencia_banco_nf > 0 ? `+${brl(divergencia_banco_nf)}` : undefined} />
           <Arrow />
-          <CruzCol titulo="💳 Despesas" valor={brl(total_despesas)} sub={`${despesas.length} lançamentos`} color="var(--red)"
-            warn={despesas_sem_doc > 0 ? `${brl(despesas_sem_doc)} s/ doc ⚠` : undefined} />
+          <CruzCol titulo="Despesas" valor={brl(total_despesas)} sub={`${despesas.length} lançamentos`} color="var(--red)"
+            warn={despesas_sem_doc > 0 ? `${brl(despesas_sem_doc)} s/ doc` : undefined} />
         </div>
       </Card>
 
@@ -280,7 +280,7 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
 
           {!usando_sim && (
             <div className="mb-3 flex items-center gap-2 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-2 text-xs text-orange-300">
-              ⚠️ <span>Informe o <strong>estoque inicial e final</strong> no simulador para calcular CMV, Lucro Bruto e Resultado.</span>
+              <span>Informe o <strong>estoque inicial e final</strong> no simulador para calcular CMV, Lucro Bruto e Resultado.</span>
             </div>
           )}
 
@@ -325,12 +325,12 @@ export default function VisaoGeral({ clienteId, periodo, refresh, cliente }: Pro
 
           <div style={{ marginTop: 12, fontSize: 11, color: 'var(--muted-foreground)', background: 'var(--surface2)', padding: '10px 12px', borderRadius: 8 }}>
             {faturamento_nf > 0 && margem !== null
-              ? <>📌 Margem líquida: <strong style={{ color: 'var(--text)' }}>{margem}%</strong>
+              ? <>Margem líquida: <strong style={{ color: 'var(--text)' }}>{margem}%</strong>
                   {parseFloat(margem) < 8 && ' — Abaixo do benchmark do setor (8–12%).'}
                 </>
               : faturamento_nf > 0
-              ? '📌 Informe o estoque no simulador acima para calcular a margem líquida.'
-              : '📌 Sem faturamento registrado neste período.'
+              ? 'Informe o estoque no simulador acima para calcular a margem líquida.'
+              : 'Sem faturamento registrado neste período.'
             }
           </div>
         </Card>
