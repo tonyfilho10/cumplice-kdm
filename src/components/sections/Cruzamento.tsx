@@ -311,82 +311,17 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
         <KpiCard label="NF × Banco Conciliado"    value={`${estatisticas.pct_conciliado}%`}              delta={`▲ ${estatisticas.conciliados} lançamentos OK`}  deltaType="up" topColor="var(--green)" />
       </div>
 
-      {/* Entradas sem NF */}
-      {recNaoDeclarada.length > 0 && (
-        <Card style={{ marginBottom: 18 }}>
-          <CardTitle sub={<Badge variant="err">RISCO ALTO</Badge>}>🚨 Entradas Bancárias sem NF Emitida</CardTitle>
-          <p style={{ fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 12 }}>
-            Entradas na conta sem nota fiscal de venda correspondente. Possível omissão de receita.
-          </p>
-          <Table headers={['Descrição', 'Valor', 'Severidade', 'Resolução']}>
-            {recNaoDeclarada.map(d => (
-              <Tr key={d.banco_lancamento_id || d.descricao}>
-                <Td>{d.descricao}</Td>
-                <Td><span style={{ color: 'var(--red)', fontWeight: 700 }}>{brl(d.valor || 0)}</span></Td>
-                <Td><Badge variant={d.severidade === 'alto' ? 'err' : 'warn'}>{d.severidade.toUpperCase()}</Badge></Td>
-                <Td><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={abrirModal} /></Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {/* Compras sem NF */}
-      {comprasSemNF.length > 0 && (
-        <Card style={{ marginBottom: 18 }}>
-          <CardTitle sub={<Badge variant="warn">ATENÇÃO</Badge>}>⚠️ Compras sem Nota Fiscal de Entrada</CardTitle>
-          <p style={{ fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 12 }}>
-            Compras sem nota de entrada. Crédito fiscal perdido e risco de autuação.
-          </p>
-          <Table headers={['Descrição', 'Valor', 'Severidade', 'Resolução']}>
-            {comprasSemNF.map(d => (
-              <Tr key={d.compra_id || d.descricao}>
-                <Td>{d.descricao}</Td>
-                <Td><span style={{ color: 'var(--orange)', fontWeight: 700 }}>{brl(d.valor || 0)}</span></Td>
-                <Td><Badge variant="warn">{d.severidade.toUpperCase()}</Badge></Td>
-                <Td><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={abrirModal} /></Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {/* Pagamentos sem NF no SPED */}
-      {pagSemNfSped.length > 0 && (
-        <Card style={{ marginBottom: 18 }}>
-          <CardTitle sub={<Badge variant="warn">SPED</Badge>}>📤 Pagamentos Bancários sem NF de Compra no SPED</CardTitle>
-          <p style={{ fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 12 }}>
-            Saídas bancárias sem NF de entrada correspondente. Pode ser despesa não classificada ou compra não escriturada.
-          </p>
-          <Table headers={['Descrição', 'Valor', 'Severidade', 'Resolução']}>
-            {pagSemNfSped.map(d => (
-              <Tr key={d.banco_lancamento_id || d.descricao}>
-                <Td>{d.descricao}</Td>
-                <Td><span style={{ color: 'var(--orange)', fontWeight: 700 }}>{brl(d.valor || 0)}</span></Td>
-                <Td><Badge variant={d.severidade === 'alto' ? 'err' : 'warn'}>{d.severidade.toUpperCase()}</Badge></Td>
-                <Td><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={abrirModal} /></Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {/* Despesas sem comprovante */}
-      {despSemDoc.length > 0 && (
-        <Card>
-          <CardTitle sub={<Badge variant="pending">MONITORAR</Badge>}>💳 Despesas sem Comprovante Fiscal</CardTitle>
-          <Table headers={['Descrição', 'Valor', 'Impacto', 'Resolução']}>
-            {despSemDoc.map(d => (
-              <Tr key={d.despesa_id || d.descricao}>
-                <Td>{d.descricao}</Td>
-                <Td>{brl(d.valor || 0)}</Td>
-                <Td><span style={{ color: 'var(--yellow)' }}>Não dedutível</span></Td>
-                <Td><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={abrirModal} /></Td>
-              </Tr>
-            ))}
-          </Table>
-        </Card>
-      )}
+      {/* Cards resumidos — clique para abrir painel central */}
+      <GrupoCards
+        orientacoesSalvas={orientacoesSalvas}
+        onResolver={abrirModal}
+        grupos={[
+          { id: 'rec',  icon: '🚨', titulo: 'Entradas sem NF Emitida',        subtitulo: 'Possível omissão de receita',                nivel: 'alto',  cor: 'var(--red)',    total: recNaoDeclarada.reduce((s,d)=>s+(d.valor||0),0), itens: recNaoDeclarada },
+          { id: 'pag',  icon: '📤', titulo: 'Pagamentos sem NF no SPED',       subtitulo: 'Saída bancária sem NF de compra',            nivel: 'medio', cor: 'var(--orange)', total: pagSemNfSped.reduce((s,d)=>s+(d.valor||0),0),    itens: pagSemNfSped    },
+          { id: 'cmp',  icon: '⚠️', titulo: 'Compras sem NF de Entrada',       subtitulo: 'Crédito fiscal perdido e risco de autuação', nivel: 'medio', cor: 'var(--orange)', total: comprasSemNF.reduce((s,d)=>s+(d.valor||0),0),    itens: comprasSemNF    },
+          { id: 'desp', icon: '💳', titulo: 'Despesas sem Comprovante Fiscal', subtitulo: 'Não dedutível — risco de glosa',             nivel: 'baixo', cor: 'var(--yellow)', total: despSemDoc.reduce((s,d)=>s+(d.valor||0),0),      itens: despSemDoc      },
+        ].filter(g => g.itens.length > 0)}
+      />
 
       {totalDiverg === 0 && divergencias.length === 0 && (
         <div style={{ textAlign: 'center', padding: 60, color: 'var(--green)' }}>
@@ -417,6 +352,171 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
   )
 }
 
+// ── Cards resumidos + painel central com backdrop blur ────────────────────
+type GrupoItem = { id: string; icon: string; titulo: string; subtitulo: string; nivel: string; cor: string; total: number; itens: DivType[] }
+
+function GrupoCards({ grupos, orientacoesSalvas, onResolver }: {
+  grupos: GrupoItem[]
+  orientacoesSalvas: Record<string, OrientacaoSalva>
+  onResolver: (d: DivType) => void
+}) {
+  const [aberto, setAberto] = useState<string | null>(null)
+  const grupo = grupos.find(g => g.id === aberto) || null
+
+  return (
+    <>
+      {/* Grid de cards resumidos */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${grupos.length}, 1fr)`, gap: 12, marginBottom: 18 }}>
+        {grupos.map(g => {
+          const pendentes = g.itens.filter(d => {
+            const chave = d.banco_lancamento_id || d.compra_id || d.despesa_id
+            return !orientacoesSalvas[chave || '']?.resolvida
+          }).length
+          return (
+            <button
+              key={g.id}
+              onClick={() => setAberto(g.id)}
+              style={{
+                background: 'var(--surface2)', border: `1px solid var(--border)`,
+                borderRadius: 12, padding: '16px 18px', textAlign: 'left', cursor: 'pointer',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+                outline: 'none',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = g.cor; (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 1px ${g.cor}40` }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ fontSize: 18 }}>{g.icon}</span>
+                <RiscoDot nivel={g.nivel} />
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 4, lineHeight: 1.3 }}>{g.titulo}</div>
+              <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginBottom: 12 }}>{g.subtitulo}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 18, fontWeight: 800, color: g.cor }}>{brl(g.total)}</span>
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{g.itens.length} item{g.itens.length !== 1 ? 's' : ''}</span>
+                {pendentes > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, background: `${g.cor}25`, color: g.cor, border: `1px solid ${g.cor}50`, borderRadius: 20, padding: '2px 8px' }}>
+                    {pendentes} pendente{pendentes !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Painel central com backdrop blur */}
+      {grupo && (
+        <div
+          onClick={() => setAberto(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 40,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--surface)', border: '1px solid var(--border)',
+              borderRadius: 16, width: '100%', maxWidth: 860,
+              maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+              boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
+            }}
+          >
+            {/* Header do painel */}
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>{grupo.icon}</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{grupo.titulo}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted-foreground)', marginTop: 1 }}>{grupo.subtitulo}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <RiscoDot nivel={grupo.nivel} />
+                <span style={{ fontSize: 16, fontWeight: 800, color: grupo.cor }}>{brl(grupo.total)}</span>
+                <button
+                  onClick={() => setAberto(null)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-foreground)', fontSize: 20, lineHeight: 1, padding: 4 }}
+                >✕</button>
+              </div>
+            </div>
+
+            {/* Tabela scrollável */}
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <Table headers={['Descrição', 'Valor', 'Risco', 'Resolução']}>
+                {grupo.itens.map(d => {
+                  const valCor = grupo.nivel === 'alto' ? 'var(--red)' : grupo.nivel === 'medio' ? 'var(--orange)' : 'var(--text)'
+                  return (
+                    <Tr key={String(d.banco_lancamento_id ?? d.compra_id ?? d.despesa_id ?? d.descricao)}>
+                      <Td><DescricaoCell descricao={d.descricao ?? ''} tipo={d.tipo} /></Td>
+                      <Td><div style={{ width: 120, whiteSpace: 'nowrap' }}><span style={{ color: valCor, fontWeight: 700 }}>{brl(d.valor || 0)}</span></div></Td>
+                      <Td><div style={{ width: 90, whiteSpace: 'nowrap' }}><RiscoDot nivel={d.severidade} /></div></Td>
+                      <Td><div style={{ width: 130, whiteSpace: 'nowrap' }}><BtnResolver div={d} orientacoesSalvas={orientacoesSalvas} onResolver={onResolver} /></div></Td>
+                    </Tr>
+                  )
+                })}
+              </Table>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Bolinha de risco colorida ──────────────────────────────────────────────
+const PREFIXOS_DESCRICAO: Record<string, string> = {
+  receita_nao_declarada:  'Entrada bancária sem NF emitida: ',
+  pagamento_sem_nf_sped:  'Pagamento bancário sem NF de compra no SPED: ',
+  compra_sem_nf:          'Compra sem NF de entrada: ',
+  despesa_sem_comprovante:'Despesa sem comprovante fiscal: ',
+}
+
+const LABEL_TIPO: Record<string, { label: string; cor: string }> = {
+  receita_nao_declarada:  { label: 'Entrada s/ NF',    cor: '#ef4444' },
+  compra_sem_nf:          { label: 'Compra s/ NF',     cor: '#f97316' },
+  pagamento_sem_nf_sped:  { label: 'Pagto s/ NF SPED', cor: '#f97316' },
+  despesa_sem_comprovante:{ label: 'Despesa s/ comp.',  cor: '#eab308' },
+}
+
+function RiscoDot({ nivel }: { nivel: string }) {
+  const cor = nivel === 'alto' ? '#ef4444' : nivel === 'medio' ? '#eab308' : '#eab308'
+  const label = nivel === 'alto' ? 'Alto' : nivel === 'medio' ? 'Médio' : 'Baixo'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ width: 10, height: 10, borderRadius: '50%', background: cor, flexShrink: 0, boxShadow: `0 0 4px ${cor}88` }} />
+      <span style={{ fontSize: 11, fontWeight: 600, color: cor }}>{label}</span>
+    </span>
+  )
+}
+
+function DescricaoCell({ descricao, tipo }: { descricao: string; tipo: string }) {
+  const prefixo = PREFIXOS_DESCRICAO[tipo] || ''
+  const texto = descricao.startsWith(prefixo) ? descricao.slice(prefixo.length) : descricao
+  const meta = LABEL_TIPO[tipo]
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {meta && (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start',
+          fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
+          background: `${meta.cor}18`, color: meta.cor,
+          border: `1px solid ${meta.cor}40`,
+          borderRadius: 4, padding: '1px 6px',
+        }}>
+          {meta.label}
+        </span>
+      )}
+      <span style={{ fontSize: 13 }}>{texto}</span>
+    </span>
+  )
+}
+
 // ── Modal de Resolução Contextual ──────────────────────────────────────────
 function ModalResolucao({
   modal, setModal, salvando, temRegistro, onSelecionarAcao, onSalvar, onLimpar,
@@ -440,173 +540,173 @@ function ModalResolucao({
     despesa_sem_comprovante: '🟡 Despesa sem comprovante',
   }
 
+  const temSubform = !!acaoAtual?.subform
+
   return (
-    <Modal title={temRegistro ? 'Editar Resolução' : 'Resolver Divergência'} onClose={() => setModal(null)}>
-      {/* Cabeçalho da divergência */}
-      <div className="rounded-lg bg-secondary border border-border p-3 mb-4">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-          {labelTipo[div.tipo] || div.tipo}
-        </p>
-        <p className="text-sm text-foreground">{div.descricao}</p>
-        {div.valor && <p className="text-xs text-muted-foreground mt-1">Valor: <strong>{brl(div.valor)}</strong></p>}
-      </div>
+    <Modal title={temRegistro ? 'Editar Resolução' : 'Resolver Divergência'} onClose={() => setModal(null)} className="!max-w-3xl">
+      {/* Layout 2 colunas */}
+      <div className="grid grid-cols-2 gap-5">
 
-      {/* Ações rápidas — opcionais */}
-      {acoes.length > 0 && (
-        <div className="mb-4">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
-            Como você vai resolver? <span className="font-normal normal-case">(opcional)</span>
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {acoes.map(acao => (
-              <button
-                key={acao.id}
-                onClick={() => onSelecionarAcao(acao)}
-                className={`flex items-start gap-2 p-2.5 rounded-lg border text-left transition-all text-xs
-                  ${modal.acaoId === acao.id
-                    ? 'border-primary bg-primary/10 text-foreground'
-                    : 'border-border bg-secondary/50 text-muted-foreground hover:border-primary/40 hover:text-foreground'
-                  }`}
+        {/* ── Coluna esquerda: info + ações ── */}
+        <div className="flex flex-col gap-4">
+          {/* Info da divergência */}
+          <div className="rounded-lg bg-secondary border border-border p-3">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">
+              {labelTipo[div.tipo] || div.tipo}
+            </p>
+            <p className="text-sm text-foreground leading-snug">{div.descricao}</p>
+            {div.valor && (
+              <p className="text-xs text-muted-foreground mt-2">
+                Valor: <strong className="text-foreground">{brl(div.valor)}</strong>
+              </p>
+            )}
+          </div>
+
+          {/* Ações rápidas */}
+          {acoes.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
+                Como resolver? <span className="font-normal normal-case opacity-60">(opcional)</span>
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {acoes.map(acao => (
+                  <button
+                    key={acao.id}
+                    onClick={() => onSelecionarAcao(acao)}
+                    className={`flex items-start gap-2 p-2.5 rounded-lg border text-left transition-all text-xs
+                      ${modal.acaoId === acao.id
+                        ? 'border-primary bg-primary/10 text-foreground'
+                        : 'border-border bg-secondary/50 text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                      }`}
+                  >
+                    <span className="text-base leading-none mt-0.5 shrink-0">{acao.icon}</span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[11px]">{acao.label}</p>
+                      <p className="text-[10px] leading-tight mt-0.5 opacity-75">{acao.descricao}</p>
+                    </div>
+                    {modal.acaoId === acao.id && (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-primary ml-auto mt-0.5 shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Coluna direita: sub-forms + obs + checkbox + botões ── */}
+        <div className="flex flex-col gap-3">
+          {/* Sub-form: número da NF */}
+          {acaoAtual?.subform === 'nf_numero' && (
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
+                Número da NF emitida <span className="font-normal normal-case opacity-60">(opcional)</span>
+              </label>
+              <input
+                value={modal.nfNumero}
+                onChange={e => setModal(m => m ? { ...m, nfNumero: e.target.value } : null)}
+                placeholder="Ex: 000456"
+                className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+            </div>
+          )}
+
+          {/* Sub-form: vincular NF */}
+          {acaoAtual?.subform === 'vincular_nf' && (
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
+                Selecionar NF do período <span className="font-normal normal-case opacity-60">(opcional)</span>
+              </label>
+              {modal.carregandoNFs ? (
+                <p className="text-xs text-muted-foreground">Carregando NFs...</p>
+              ) : modal.nfsDisponiveis.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Nenhuma NF encontrada no período.</p>
+              ) : (
+                <select
+                  value={modal.nfSelecionada}
+                  onChange={e => setModal(m => m ? { ...m, nfSelecionada: e.target.value } : null)}
+                  className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
+                >
+                  <option value="">— Selecionar NF —</option>
+                  {modal.nfsDisponiveis.map(nf => (
+                    <option key={nf.id} value={nf.id}>NF {nf.numero} · {nf.cliente_nf} · {brl(nf.valor)}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Sub-form: categoria */}
+          {acaoAtual?.subform === 'categoria' && (
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
+                Categoria da despesa <span className="font-normal normal-case opacity-60">(opcional)</span>
+              </label>
+              <select
+                value={modal.categoriaDespesa}
+                onChange={e => setModal(m => m ? { ...m, categoriaDespesa: e.target.value } : null)}
+                className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
               >
-                <span className="text-base leading-none mt-0.5">{acao.icon}</span>
-                <div>
-                  <p className="font-semibold text-[11px]">{acao.label}</p>
-                  <p className="text-[10px] leading-tight mt-0.5 opacity-75">{acao.descricao}</p>
-                </div>
-                {modal.acaoId === acao.id && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-primary ml-auto mt-0.5 shrink-0" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sub-form: número da NF */}
-      {acaoAtual?.subform === 'nf_numero' && (
-        <div className="mb-3">
-          <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
-            Número da NF emitida <span className="font-normal normal-case">(opcional)</span>
-          </label>
-          <input
-            value={modal.nfNumero}
-            onChange={e => setModal(m => m ? { ...m, nfNumero: e.target.value } : null)}
-            placeholder="Ex: 000456"
-            className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-        </div>
-      )}
-
-      {/* Sub-form: vincular NF existente */}
-      {acaoAtual?.subform === 'vincular_nf' && (
-        <div className="mb-3">
-          <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
-            Selecionar NF do período <span className="font-normal normal-case">(opcional)</span>
-          </label>
-          {modal.carregandoNFs ? (
-            <p className="text-xs text-muted-foreground">Carregando NFs...</p>
-          ) : modal.nfsDisponiveis.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Nenhuma NF encontrada no período.</p>
-          ) : (
-            <select
-              value={modal.nfSelecionada}
-              onChange={e => setModal(m => m ? { ...m, nfSelecionada: e.target.value } : null)}
-              className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
-            >
-              <option value="">— Selecionar NF —</option>
-              {modal.nfsDisponiveis.map(nf => (
-                <option key={nf.id} value={nf.id}>
-                  NF {nf.numero} · {nf.cliente_nf} · {brl(nf.valor)}
-                </option>
-              ))}
-            </select>
+                {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           )}
-        </div>
-      )}
 
-      {/* Sub-form: categoria de despesa */}
-      {acaoAtual?.subform === 'categoria' && (
-        <div className="mb-3">
-          <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
-            Categoria da despesa <span className="font-normal normal-case">(opcional)</span>
-          </label>
-          <select
-            value={modal.categoriaDespesa}
-            onChange={e => setModal(m => m ? { ...m, categoriaDespesa: e.target.value } : null)}
-            className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-      )}
+          {/* Sub-form: mensagem */}
+          {acaoAtual?.subform === 'msg_template' && modal.msgTemplate && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Mensagem sugerida</label>
+                <button onClick={() => navigator.clipboard.writeText(modal.msgTemplate).then(() => {})}
+                  className="flex items-center gap-1 text-[10px] text-primary hover:underline">
+                  <Copy className="h-3 w-3" /> Copiar
+                </button>
+              </div>
+              <textarea readOnly value={modal.msgTemplate} rows={4}
+                className="w-full rounded-lg border border-border bg-secondary/30 text-foreground text-xs px-3 py-2 resize-none cursor-text" />
+            </div>
+          )}
 
-      {/* Sub-form: template de mensagem para solicitar NF */}
-      {acaoAtual?.subform === 'msg_template' && modal.msgTemplate && (
-        <div className="mb-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-              Mensagem sugerida
+          {/* Observação */}
+          <div className={temSubform ? '' : 'flex-1'}>
+            <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
+              Observação <span className="font-normal normal-case opacity-60">(opcional)</span>
             </label>
-            <button
-              onClick={() => navigator.clipboard.writeText(modal.msgTemplate).then(() => {})}
-              className="flex items-center gap-1 text-[10px] text-primary hover:underline"
-            >
-              <Copy className="h-3 w-3" /> Copiar
-            </button>
+            <textarea
+              value={modal.texto}
+              onChange={e => setModal(m => m ? { ...m, texto: e.target.value } : null)}
+              placeholder="Comentário livre para registro interno..."
+              rows={temSubform ? 3 : 5}
+              className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+            />
           </div>
-          <textarea
-            readOnly
-            value={modal.msgTemplate}
-            rows={5}
-            className="w-full rounded-lg border border-border bg-secondary/30 text-foreground text-xs px-3 py-2 resize-none cursor-text"
-          />
-        </div>
-      )}
 
-      {/* Observação livre — sempre opcional */}
-      <div className="mb-3">
-        <label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground block mb-1.5">
-          Observação <span className="font-normal normal-case">(opcional)</span>
-        </label>
-        <textarea
-          value={modal.texto}
-          onChange={e => setModal(m => m ? { ...m, texto: e.target.value } : null)}
-          placeholder="Comentário livre para registro interno..."
-          rows={3}
-          className="w-full rounded-lg border border-border bg-secondary text-foreground text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-        />
-      </div>
+          {/* Checkbox resolvida */}
+          <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-lg border border-border bg-secondary/50 hover:bg-secondary transition-colors">
+            <input type="checkbox" checked={modal.resolvida}
+              onChange={e => setModal(m => m ? { ...m, resolvida: e.target.checked } : null)}
+              className="w-4 h-4 accent-green-500" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Marcar como resolvida</p>
+              <p className="text-xs text-muted-foreground">Remove das pendências ativas</p>
+            </div>
+            {modal.resolvida && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
+          </label>
 
-      {/* Toggle: marcar como resolvida — sempre opcional */}
-      <label className="flex items-center gap-2.5 cursor-pointer p-3 rounded-lg border border-border bg-secondary/50 hover:bg-secondary transition-colors mb-4">
-        <input
-          type="checkbox"
-          checked={modal.resolvida}
-          onChange={e => setModal(m => m ? { ...m, resolvida: e.target.checked } : null)}
-          className="w-4 h-4 accent-green-500"
-        />
-        <div>
-          <p className="text-sm font-medium text-foreground">Marcar como resolvida</p>
-          <p className="text-xs text-muted-foreground">Remove das pendências ativas</p>
+          {/* Rodapé */}
+          <div className="flex items-center justify-between pt-1">
+            <div>
+              {temRegistro && <Btn variant="danger" onClick={onLimpar} disabled={salvando}>🗑️ Limpar</Btn>}
+            </div>
+            <div className="flex gap-2">
+              <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
+              <Btn onClick={onSalvar} disabled={salvando || (!modal.acaoId && !modal.texto.trim() && !modal.resolvida)}>
+                {salvando ? 'Salvando...' : temRegistro ? 'Atualizar' : 'Salvar'}
+              </Btn>
+            </div>
+          </div>
         </div>
-        {modal.resolvida && <CheckCircle2 className="h-4 w-4 text-green-500 ml-auto" />}
-      </label>
 
-      {/* Rodapé */}
-      <div className="flex items-center justify-between">
-        <div>
-          {temRegistro && (
-            <Btn variant="danger" onClick={onLimpar} disabled={salvando}>
-              🗑️ Limpar
-            </Btn>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Btn variant="ghost" onClick={() => setModal(null)}>Cancelar</Btn>
-          <Btn onClick={onSalvar} disabled={salvando || (!modal.acaoId && !modal.texto.trim() && !modal.resolvida)}>
-            {salvando ? 'Salvando...' : temRegistro ? 'Atualizar' : 'Salvar'}
-          </Btn>
-        </div>
       </div>
     </Modal>
   )

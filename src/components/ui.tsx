@@ -213,12 +213,12 @@ export function Td({ children, mono }: { children: React.ReactNode; mono?: boole
 }
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
-export function Modal({ title, children, onClose }: {
-  title: string; children: React.ReactNode; onClose: () => void
+export function Modal({ title, children, onClose, className }: {
+  title: string; children: React.ReactNode; onClose: () => void; className?: string
 }) {
   return (
     <Dialog open onOpenChange={open => !open && onClose()}>
-      <DialogContent className="bg-card border-border max-w-lg">
+      <DialogContent className={`bg-card border-border max-w-lg ${className ?? ''}`}>
         <DialogHeader>
           <DialogTitle className="text-foreground">{title}</DialogTitle>
         </DialogHeader>
