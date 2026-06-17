@@ -134,71 +134,49 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     onRecarregar()
   }
 
-  async function lerStream(
+  async function enviarPdf(
     url: string,
     fd: FormData,
     setStatus: (s: ImportStatus) => void,
     onDone: () => Promise<void>
   ) {
-    setStatus({ loading: true, msg: 'Conectando...', ok: null })
+    setStatus({ loading: true, msg: 'Analisando PDF com IA... (pode levar até 1 minuto)', ok: null })
     try {
-      const res = await fetch(url, { method: 'POST', body: fd })
-      if (!res.body) throw new Error('Resposta sem body')
-      const reader = res.body.getReader()
-      const dec = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const d = JSON.parse(line) as Record<string, unknown>
-            if (d.status === 'processing') {
-              setStatus({ loading: true, msg: String(d.msg ?? 'Processando...'), ok: null })
-            } else if (d.status === 'progress') {
-              setStatus({ loading: true, msg: `Extraindo... ${d.count} registros`, ok: null })
-            } else if (d.status === 'done') {
-              const msg = 'inseridos' in d
-                ? `${d.inseridos} inseridos · ${(d as Record<string,unknown>).atualizados ?? (d as Record<string,unknown>).ignorados ?? 0} ${(d as Record<string,unknown>).atualizados != null ? 'atualizados' : 'já existiam'} (total ${d.total})`
-                : 'Importação concluída'
-              setStatus({ loading: false, msg, ok: true })
-              await onDone()
-            } else if (d.status === 'error') {
-              setStatus({ loading: false, msg: `Erro: ${d.erro}`, ok: false })
-            }
-          } catch { /* linha inválida */ }
-        }
+      const res  = await fetch(url, { method: 'POST', body: fd })
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try { data = JSON.parse(text) }
+      catch { data = { erro: `Resposta inesperada do servidor (HTTP ${res.status})` } }
+
+      if (data.erro) {
+        setStatus({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
+      } else {
+        const inseridos  = data.inseridos  as number
+        const atualizados = data.atualizados as number | undefined
+        const ignorados  = data.ignorados  as number | undefined
+        const total      = data.total      as number
+        const detalhe = atualizados != null
+          ? `${inseridos} inseridos · ${atualizados} atualizados`
+          : `${inseridos} inseridas · ${ignorados ?? 0} já existiam`
+        setStatus({ loading: false, msg: `${detalhe} (total ${total})`, ok: true })
+        await onDone()
       }
     } catch (err) {
-      setStatus({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha'}`, ok: false })
+      setStatus({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
     }
   }
 
   async function uploadCadastro(file: File) {
     const fd = new FormData()
     fd.append('arquivo', file)
-    await lerStream(
-      `/api/clientes/${clienteId}/importar-fornecedores-cadastro`,
-      fd,
-      setImportCadastro,
-      async () => { await carregar() }
-    )
+    await enviarPdf(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, fd, setImportCadastro, carregar)
   }
 
   async function uploadContas(file: File) {
     const fd = new FormData()
     fd.append('arquivo', file)
     fd.append('substituir', String(substituirContas))
-    await lerStream(
-      `/api/clientes/${clienteId}/importar-contas-pagar`,
-      fd,
-      setImportContas,
-      async () => { await carregar() }
-    )
+    await enviarPdf(`/api/clientes/${clienteId}/importar-contas-pagar`, fd, setImportContas, carregar)
   }
 
   async function cruzarAgora() {
