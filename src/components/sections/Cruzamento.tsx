@@ -175,10 +175,6 @@ export default function Cruzamento({ clienteId, periodo, refresh, onRecarregar }
   // ── Salva a resolução (singular ou bulk) ────────────────────────────────
   async function salvar() {
     if (!modal) return
-    if (modal.acaoId === 'imposto_tributo' && !modal.texto.trim()) {
-      setToast('Erro: Descreva o imposto ou tributo antes de salvar.')
-      return
-    }
     setSalvando(true)
 
     const divs = modal.divergenciasBulk ?? [modal.divergencia]
@@ -705,7 +701,7 @@ function ModalResolucao({
   }
 
   const temSubform = !!acaoAtual?.subform
-  const obsObrigatoria = modal.acaoId === 'imposto_tributo'
+  const obsObrigatoria = false
   const isBulk = (modal.divergenciasBulk?.length ?? 0) > 1
   const bulkCount = modal.divergenciasBulk?.length ?? 1
 
