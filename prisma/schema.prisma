@@ -31,7 +31,9 @@ model Cliente {
   contas_bancarias   ContaBancaria[]
   periodos_fechados  PeriodoFechado[]
   usuario_clientes UsuarioCliente[]
-  notas_servico    NotaServico[]
+  notas_servico        NotaServico[]
+  fornecedores_cadastro FornecedorCadastro[]
+  contas_pagar          ContaPagar[]
 
   @@map("clientes")
 }
@@ -143,6 +145,7 @@ model BancoLancamento {
   nota_fiscal   NotaFiscal?  @relation("NotaConciliada", fields: [nota_fiscal_id], references: [id])
   nota_servico  NotaServico? @relation("NfServicoConciliada")
   divergencia   Divergencia[]
+  contas_pagar  ContaPagar[]
 
   @@map("banco_lancamentos")
 }
@@ -258,4 +261,39 @@ model Threshold {
   cliente Cliente @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
 
   @@map("thresholds")
+}
+
+model FornecedorCadastro {
+  id         String    @id @default(uuid())
+  cliente_id String
+  cnpj       String?
+  codigo_erp String?
+  nome       String
+  created_at DateTime  @default(now())
+
+  cliente Cliente @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+
+  @@map("fornecedores_cadastro")
+}
+
+model ContaPagar {
+  id                  String    @id @default(uuid())
+  cliente_id          String
+  fornecedor_codigo   String?
+  fornecedor_nome     String
+  documento           String
+  emissao             DateTime? @db.Date
+  entrada             DateTime? @db.Date
+  vencimento          DateTime? @db.Date
+  valor_parcela       Decimal   @db.Decimal(15, 2)
+  valor_pago          Decimal   @default(0) @db.Decimal(15, 2)
+  saldo               Decimal   @db.Decimal(15, 2)
+  situacao            String    @default("Aberta")
+  banco_lancamento_id String?
+  created_at          DateTime  @default(now())
+
+  cliente          Cliente          @relation(fields: [cliente_id], references: [id], onDelete: Cascade)
+  banco_lancamento BancoLancamento? @relation(fields: [banco_lancamento_id], references: [id])
+
+  @@map("contas_pagar")
 }
