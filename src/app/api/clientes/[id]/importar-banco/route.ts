@@ -156,7 +156,8 @@ export async function POST(
     // ── Cruzamento automático com contas a pagar de fornecedores ───────────
     let baixasFornecedores = 0
     try {
-      baixasFornecedores = await cruzarFornecedores(clienteId, Object.keys(porPeriodo))
+      const r = await cruzarFornecedores(clienteId, Object.keys(porPeriodo))
+      baixasFornecedores = r.baixas
     } catch { /* não bloqueia importação se falhar */ }
 
     return NextResponse.json({

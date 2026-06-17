@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { BancoLancamento } from '@/lib/supabase/types'
 import {
@@ -15,11 +15,11 @@ import UploadComprovante from '@/components/UploadComprovante'
 import UploadComprovanteEmLote from '@/components/UploadComprovanteEmLote'
 import { gerarPdfLancamentosBancarios } from '@/lib/relatorios/banco-pdf'
 
-type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
+type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void; highlightId?: string; onHighlightClear?: () => void }
 
 const hoje = new Date().toISOString().substring(0, 10)
 
-export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Props) {
+export default function Banco({ clienteId, periodo, refresh, onRecarregar, highlightId, onHighlightClear }: Props) {
   const supabase = createClient()
   const [lancamentos, setLancamentos] = useState<BancoLancamento[]>([])
   const [contas, setContas] = useState<string[]>([])
@@ -78,6 +78,21 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
   }
 
   useEffect(() => { carregar() }, [carregar, refresh])
+
+  // Scroll + highlight quando navegado a partir de outra seção
+  const highlightedRowRef = useRef<HTMLTableRowElement | null>(null)
+  useEffect(() => {
+    if (!highlightId) return
+    const row = document.getElementById(`banco-row-${highlightId}`) as HTMLTableRowElement | null
+    if (!row) return
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    row.classList.add('banco-highlight')
+    const t = setTimeout(() => {
+      row.classList.remove('banco-highlight')
+      onHighlightClear?.()
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [highlightId])
 
   function contaSelecionadaImport(): string {
     if (adicionandoConta) return novaContaInput.trim()
@@ -187,21 +202,27 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 
   const contasPeriodo = [...new Set(lancamentos.map(l => l.conta).filter(Boolean))] as string[]
 
-  const visiveis = lancamentos
-    .filter(l => !contaFiltro || l.conta === contaFiltro)
-    .filter(l => {
-      if (comprovanteFiltro === 'todos') return true
-      if (comprovanteFiltro === 'sem' && l.tipo === 'entrada') return false
-      const temComprovante = !!(l as any).comprovante_url
-      return comprovanteFiltro === 'com' ? temComprovante : !temComprovante
-    })
-    .filter(l => {
-      if (notaFiltro === 'todos') return true
-      const temNF = !!(l.nota_fiscal_id || l.nf_vinculada)
-      if (notaFiltro === 'sem-entrada') return l.tipo === 'entrada' && !temNF
-      if (notaFiltro === 'sem-saida') return l.tipo === 'saida' && !temNF
-      return true
-    })
+  // Quando vem de navegação cruzada (ex: Fornecedores), exibe só o lançamento vinculado
+  const filtroPinado = highlightId ?? null
+
+  const visiveis = (filtroPinado
+    ? lancamentos.filter(l => l.id === filtroPinado)
+    : lancamentos
+        .filter(l => !contaFiltro || l.conta === contaFiltro)
+        .filter(l => {
+          if (comprovanteFiltro === 'todos') return true
+          if (comprovanteFiltro === 'sem' && l.tipo === 'entrada') return false
+          const temComprovante = !!(l as any).comprovante_url
+          return comprovanteFiltro === 'com' ? temComprovante : !temComprovante
+        })
+        .filter(l => {
+          if (notaFiltro === 'todos') return true
+          const temNF = !!(l.nota_fiscal_id || l.nf_vinculada)
+          if (notaFiltro === 'sem-entrada') return l.tipo === 'entrada' && !temNF
+          if (notaFiltro === 'sem-saida') return l.tipo === 'saida' && !temNF
+          return true
+        })
+  )
 
   // Consolidado por banco
   const consolidado = contasPeriodo.map(conta => {
@@ -265,6 +286,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
 
   return (
     <div>
+      <style>{`@keyframes banco-flash { 0%,100% { background-color: transparent; } 25%,75% { background-color: oklch(0.72 0.22 40 / 0.25); } } .banco-highlight { animation: banco-flash 0.7s ease-in-out 4; }`}</style>
       <Card className="mb-4">
         <CardTitle>Lançamento Bancário Manual</CardTitle>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -477,6 +499,22 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
         </div>
       )}
 
+      {/* Banner de lançamento pinado via navegação cruzada */}
+      {filtroPinado && (
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-400 text-sm">
+          <span className="flex items-center gap-2">
+            <span className="text-base">📌</span>
+            Mostrando apenas o lançamento vinculado ao fornecedor.
+          </span>
+          <button
+            onClick={onHighlightClear}
+            className="text-xs font-semibold underline hover:text-amber-300 shrink-0"
+          >
+            Ver todos os lançamentos
+          </button>
+        </div>
+      )}
+
       {/* Tabela */}
       <Card>
         <CardTitle sub={
@@ -509,7 +547,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
           {conciliando && (
             <div className="w-full rounded-full overflow-hidden bg-secondary h-1 mt-3">
               <div className="h-full rounded-full bg-primary" style={{ width: '40%', animation: 'indeterminate-progress 1.4s ease-in-out infinite' }} />
-              <style>{`@keyframes indeterminate-progress { 0% { transform: translateX(-100%) scaleX(0.4); } 50% { transform: translateX(100%) scaleX(0.8); } 100% { transform: translateX(250%) scaleX(0.4); } }`}</style>
+              <style>{`@keyframes indeterminate-progress { 0% { transform: translateX(-100%) scaleX(0.4); } 50% { transform: translateX(100%) scaleX(0.8); } 100% { transform: translateX(250%) scaleX(0.4); } } @keyframes banco-flash { 0%,100% { background-color: transparent; } 25%,75% { background-color: oklch(0.72 0.22 40 / 0.25); } } .banco-highlight { animation: banco-flash 0.7s ease-in-out 4; }`}</style>
             </div>
           )}
         </CardTitle>
@@ -536,7 +574,7 @@ export default function Banco({ clienteId, periodo, refresh, onRecarregar }: Pro
             <tbody>
           {visiveis.map(b => (
             <React.Fragment key={b.id}>
-            <tr className="border-b border-border hover:bg-secondary/50 transition-colors">
+            <tr id={`banco-row-${b.id}`} className="border-b border-border hover:bg-secondary/50 transition-colors banco-row">
               {/* Seleção */}
               <td className="py-2.5 px-3">
                 <input type="checkbox" checked={selecionados.has(b.id)} onChange={() => alternarSelecao(b.id)}

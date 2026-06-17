@@ -7,7 +7,10 @@ import { Card, CardTitle, Modal, Toast, brl, fmtData } from '@/components/ui'
 import { Search, CheckCircle2, AlertCircle, Clock, Link2, Users, GitMerge } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
+type Props = {
+  clienteId: string; periodo: string; refresh: number; onRecarregar: () => void
+  onNavegar?: (secao: string, highlightId?: string, periodo?: string) => void
+}
 
 type ContaComMatch = ContaPagar & { matchesBanco?: BancoLancamento[] }
 type View = 'contas' | 'cadastro'
@@ -32,7 +35,7 @@ function nomeSimilar(nomeFornecedor: string, descricaoBanco: string): boolean {
   return palavras.some(p => db.includes(p))
 }
 
-export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar }: Props) {
+export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar, onNavegar }: Props) {
   const supabase = createClient()
   const [view, setView] = useState<View>('contas')
   const [contas, setContas] = useState<ContaComMatch[]>([])
@@ -46,6 +49,7 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
   const [salvando, setSalvando] = useState(false)
   const [buscaFornecedor, setBuscaFornecedor] = useState('')
   const [cruzando, setCruzando] = useState(false)
+  const [baixandoMassa, setBaixandoMassa] = useState(false)
 
   const carregar = useCallback(async () => {
     const [{ data: contasData }, { data: fornData }, { data: saidasData }] = await Promise.all([
@@ -66,7 +70,7 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
         if (venc) {
           const ds = new Date(s.data)
           const diffDias = Math.abs((ds.getTime() - venc.getTime()) / 86400000)
-          if (diffDias > 30) return false
+          if (diffDias > 180) return false
         }
         return nomeSimilar(c.fornecedor_nome, s.descricao) || diffValor < 0.001
       })
@@ -104,13 +108,34 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     setSalvando(false)
   }
 
+  async function darBaixaEmMassa() {
+    const pendentes = contas.filter(c => c.situacao !== 'Pago' && (c.matchesBanco?.length ?? 0) > 0)
+    if (pendentes.length === 0) return
+    setBaixandoMassa(true)
+    let ok = 0
+    for (const conta of pendentes) {
+      const match = conta.matchesBanco![0]
+      try {
+        const [{ error: e1 }, { error: e2 }] = await Promise.all([
+          supabase.from('contas_pagar').update({ situacao: 'Pago', valor_pago: conta.valor_parcela, banco_lancamento_id: match.id }).eq('id', conta.id),
+          supabase.from('banco_lancamentos').update({ status: 'ok', categoria: 'Fornecedor' }).eq('id', match.id),
+        ])
+        if (!e1 && !e2) ok++
+      } catch { /* segue */ }
+    }
+    setBaixandoMassa(false)
+    setToast(`${ok} de ${pendentes.length} baixa(s) registrada(s).`)
+    await carregar()
+    onRecarregar()
+  }
+
   async function cruzarAgora() {
     setCruzando(true)
     try {
       const res = await fetch(`/api/clientes/${clienteId}/cruzar-fornecedores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ periodo }),
+        body: JSON.stringify({}),
       })
       const result = await res.json()
       if (result.erro) {
@@ -160,7 +185,17 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     <div className="flex flex-col gap-4">
 
       {/* ── Barra de ações ── */}
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {comMatch > 0 && (
+          <button
+            onClick={darBaixaEmMassa}
+            disabled={baixandoMassa}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            {baixandoMassa ? 'Baixando...' : `Dar baixa nos matches (${comMatch})`}
+          </button>
+        )}
         <button
           onClick={cruzarAgora}
           disabled={cruzando}
@@ -258,8 +293,35 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
                 {contasFiltradas.map(c => {
                   const temMatch = (c.matchesBanco?.length ?? 0) > 0
                   const vencida = c.situacao === 'Aberta' && !!c.vencimento && new Date(c.vencimento) < new Date()
+                  const matchLanc = c.matchesBanco?.[0]
+                  const bancoId = c.banco_lancamento_id ?? matchLanc?.id
+
+                  async function irParaBanco() {
+                    if (!bancoId) return
+                    // Se temos o match em memória, usamos o período diretamente
+                    if (matchLanc) {
+                      onNavegar?.('banco', bancoId, matchLanc.periodo)
+                      return
+                    }
+                    // Para contas já pagas, buscamos o período do lançamento vinculado
+                    const { data } = await supabase
+                      .from('banco_lancamentos')
+                      .select('periodo')
+                      .eq('id', bancoId)
+                      .single()
+                    onNavegar?.('banco', bancoId, data?.periodo ?? undefined)
+                  }
+
                   return (
-                    <tr key={c.id} className={cn('border-b border-border hover:bg-secondary/40 transition-colors', vencida && 'bg-red-500/5')}>
+                    <tr
+                      key={c.id}
+                      onClick={bancoId ? irParaBanco : undefined}
+                      className={cn(
+                        'border-b border-border hover:bg-secondary/40 transition-colors',
+                        vencida && 'bg-red-500/5',
+                        bancoId && 'cursor-pointer',
+                      )}
+                    >
                       <td className={tdCls}>
                         <p className="font-medium">{c.fornecedor_nome}</p>
                         <p className="text-xs text-muted-foreground">Cód. {c.fornecedor_codigo}</p>
@@ -277,7 +339,7 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
                           {c.situacao}
                         </span>
                       </td>
-                      <td className={tdCls}>
+                      <td className={tdCls} onClick={e => e.stopPropagation()}>
                         {c.situacao !== 'Pago' && (
                           <button
                             onClick={() => { setDandoBaixa(c); setLancamentoSelecionado(c.matchesBanco?.[0]?.id ?? '') }}

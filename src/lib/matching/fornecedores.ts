@@ -1,11 +1,3 @@
-/**
- * Cruzamento automático de saídas bancárias com contas a pagar de fornecedores.
- * Chamado após importação de extrato para dar baixa quando há match forte.
- *
- * Usa Prisma.$queryRawUnsafe para as tabelas fornecedores_cadastro e contas_pagar,
- * que existem no banco mas não no schema Prisma (criadas via SQL manual).
- */
-
 import { prisma } from '@/lib/prisma'
 
 function normalizar(s: string) {
@@ -22,39 +14,27 @@ function nomeSimilar(nomeFornecedor: string, descricaoBanco: string): boolean {
   return palavras.some(p => db.includes(p))
 }
 
-type SaidaBanco = { id: string; data: Date; valor: number; descricao: string }
+type SaidaBanco  = { id: string; data: Date; valor: number; descricao: string }
 type ContaAberta = { id: string; fornecedor_nome: string; vencimento: Date | null; valor_parcela: number }
+type DebugInfo   = { saidas: number; contas: number; amostra_saidas: string[]; amostra_contas: string[]; falhas: string[] }
 
-/**
- * Para cada saída bancária nova (pendente/sem_nf) nos períodos informados,
- * tenta encontrar uma conta a pagar em aberto com match por:
- *   - valor idêntico (diferença ≤ 0,1%)
- *   - nome do fornecedor na descrição do lançamento bancário
- *   - vencimento dentro de ±30 dias da data do lançamento
- *
- * Quando encontra match, marca:
- *   - banco_lancamento: status='ok', categoria='Fornecedor'
- *   - contas_pagar: situacao='Pago', valor_pago, banco_lancamento_id
- *
- * Retorna o número de baixas automáticas realizadas.
- */
-export async function cruzarFornecedores(clienteId: string, periodos: string[]): Promise<number> {
+export async function cruzarFornecedores(
+  clienteId: string,
+  periodos: string[]
+): Promise<{ baixas: number; debug: DebugInfo }> {
+
   const saidas = await prisma.bancoLancamento.findMany({
     where: {
       cliente_id: clienteId,
       tipo: 'saida',
       periodo: { in: periodos },
       status: { in: ['pendente', 'sem_nf'] },
-      nota_fiscal_id: null,
     },
     select: { id: true, data: true, valor: true, descricao: true },
   }) as unknown as SaidaBanco[]
 
-  if (saidas.length === 0) return 0
-
-  // Busca contas a pagar em aberto via raw SQL (tabela fora do schema Prisma)
   const contasAbertas = await prisma.$queryRawUnsafe<ContaAberta[]>(
-    `SELECT id, fornecedor_nome, vencimento, valor_parcela
+    `SELECT id::text, fornecedor_nome, vencimento, valor_parcela
      FROM contas_pagar
      WHERE cliente_id = $1
        AND situacao = 'Aberta'
@@ -62,50 +42,72 @@ export async function cruzarFornecedores(clienteId: string, periodos: string[]):
     clienteId
   )
 
-  if (contasAbertas.length === 0) return 0
+  const debug: DebugInfo = {
+    saidas: saidas.length,
+    contas: contasAbertas.length,
+    amostra_saidas: saidas.slice(0, 3).map(s => `R$${Number(s.valor).toFixed(2)} | ${s.descricao?.substring(0,40)}`),
+    amostra_contas: contasAbertas.slice(0, 3).map(c => `${c.fornecedor_nome} R$${Number(c.valor_parcela).toFixed(2)}`),
+    falhas: [],
+  }
 
+  if (saidas.length === 0 || contasAbertas.length === 0) {
+    return { baixas: 0, debug }
+  }
+
+  // Cria cópia mutável para marcar contas já vinculadas nesta rodada
+  const contasLivres = [...contasAbertas]
   let baixasFeitas = 0
 
   for (const saida of saidas) {
-    for (const conta of contasAbertas) {
+    const valorSaida = Number(saida.valor)
+
+    for (let i = 0; i < contasLivres.length; i++) {
+      const conta = contasLivres[i]
       const saldoConta = Number(conta.valor_parcela)
-      const valorSaida = Number(saida.valor)
 
-      // Valor deve ser idêntico (tolerância 0,1%)
+      // 1. Valor ±2%
       const diffValor = saldoConta > 0 ? Math.abs(valorSaida - saldoConta) / saldoConta : 1
-      if (diffValor > 0.001) continue
+      if (diffValor > 0.02) continue
 
-      // Nome do fornecedor deve aparecer na descrição bancária
-      if (!nomeSimilar(conta.fornecedor_nome, saida.descricao)) continue
+      // 2. Nome na descrição
+      if (!nomeSimilar(conta.fornecedor_nome, saida.descricao)) {
+        if (diffValor < 0.001) {
+          debug.falhas.push(`valor ok mas nome falhou: "${conta.fornecedor_nome}" vs "${saida.descricao?.substring(0,40)}"`)
+        }
+        continue
+      }
 
-      // Vencimento dentro de ±30 dias
+      // 3. Data ±180 dias (cobre atrasos e pagamentos antecipados dentro dos 6 meses do dataset)
       if (conta.vencimento) {
         const dataLanc = new Date(saida.data)
         const dataVenc = new Date(conta.vencimento)
         const diffDias = Math.abs((dataLanc.getTime() - dataVenc.getTime()) / 86400000)
-        if (diffDias > 30) continue
+        if (diffDias > 180) {
+          debug.falhas.push(`valor+nome ok mas data falhou: ${conta.fornecedor_nome} diffDias=${diffDias}`)
+          continue
+        }
       }
 
-      // Match — dar baixa
-      await prisma.$transaction([
-        prisma.bancoLancamento.update({
-          where: { id: saida.id },
-          data: { status: 'ok', categoria: 'Fornecedor' },
-        }),
-        prisma.$executeRawUnsafe(
-          `UPDATE contas_pagar
-           SET situacao = 'Pago', valor_pago = $1, banco_lancamento_id = $2
-           WHERE id = $3`,
-          saldoConta, saida.id, conta.id
-        ),
-      ])
-
-      baixasFeitas++
-      // Remove da lista de abertas para não vincular o mesmo fornecedor duas vezes
-      contasAbertas.splice(contasAbertas.indexOf(conta), 1)
+      // Match confirmado
+      try {
+        await prisma.$transaction([
+          prisma.bancoLancamento.update({
+            where: { id: saida.id },
+            data: { status: 'ok', categoria: 'Fornecedor' },
+          }),
+          prisma.$executeRawUnsafe(
+            `UPDATE contas_pagar SET situacao='Pago', valor_pago=$1, banco_lancamento_id=$2 WHERE id=$3::uuid`,
+            saldoConta, saida.id, conta.id
+          ),
+        ])
+        baixasFeitas++
+        contasLivres.splice(i, 1)
+      } catch (err) {
+        debug.falhas.push(`erro ao salvar: ${err instanceof Error ? err.message : String(err)}`)
+      }
       break
     }
   }
 
-  return baixasFeitas
+  return { baixas: baixasFeitas, debug }
 }

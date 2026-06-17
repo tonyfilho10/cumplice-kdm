@@ -74,6 +74,8 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   const [atualizando, setAtualizando] = useState(false)
   // Collapsed state compartilhado entre Sidebar e main (evita hack de DOM)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Highlight para navegação cruzada (ex: Fornecedores → Banco)
+  const [bancoHighlight, setBancoHighlight] = useState<string | undefined>()
 
   // Seções que precisam de um cliente ativo
   const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','notas-servico','sped','banco','despesas','fornecedores','cruzamento','projecao','config']
@@ -181,9 +183,9 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
               {secao === 'notas'         && <NotasFiscais {...sectionProps} />}
               {secao === 'notas-servico' && <NotasServico {...sectionProps} />}
               {secao === 'sped'        && <Sped {...sectionProps} />}
-              {secao === 'banco'       && <Banco {...sectionProps} />}
+              {secao === 'banco'       && <Banco {...sectionProps} highlightId={bancoHighlight} onHighlightClear={() => setBancoHighlight(undefined)} />}
               {secao === 'despesas'    && <Despesas {...sectionProps} />}
-              {secao === 'fornecedores' && <Fornecedores {...sectionProps} />}
+              {secao === 'fornecedores' && <Fornecedores {...sectionProps} onNavegar={(s, id, p) => { setSecao(s as Section); if (id) setBancoHighlight(id); if (p) setPeriodo(p) }} />}
               {secao === 'cruzamento'  && <Cruzamento {...sectionProps} />}
               {secao === 'projecao'    && <Projecao {...sectionProps} cliente={clienteAtivo} />}
               {secao === 'config'      && <Config {...sectionProps} cliente={clienteAtivo} onAtualizar={recarregar} />}

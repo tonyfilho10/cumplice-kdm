@@ -36,11 +36,12 @@ export async function POST(
       return NextResponse.json({ baixas: 0, mensagem: 'Nenhuma saída sem NF encontrada.' })
     }
 
-    const baixas = await cruzarFornecedores(clienteId, periodos)
+    const { baixas, debug } = await cruzarFornecedores(clienteId, periodos)
 
     return NextResponse.json({
       baixas,
       periodos,
+      debug,
       mensagem: baixas > 0
         ? `${baixas} pagamento(s) vinculado(s) automaticamente.`
         : 'Nenhum match encontrado com os critérios atuais.',
