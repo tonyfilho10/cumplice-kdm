@@ -39,7 +39,10 @@ export async function POST(
 
     // Extrai texto do PDF localmente (sem IA) — rápido e sem timeout
     const buffer = Buffer.from(await arquivo.arrayBuffer())
-    const { text: pdfText } = await pdfParse(buffer)
+    const { text: rawText } = await pdfParse(buffer)
+
+    // Limita a 80 mil chars para evitar prompts gigantes (≈ 20k tokens de entrada)
+    const pdfText = rawText?.slice(0, 80_000)
 
     if (!pdfText?.trim()) {
       return NextResponse.json({ erro: 'Não foi possível extrair texto do PDF' }, { status: 422 })
@@ -49,7 +52,7 @@ export async function POST(
     const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 8192,
+      max_tokens: 4096,
       messages: [{
         role: 'user',
         content: PROMPT + pdfText,
