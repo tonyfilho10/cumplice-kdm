@@ -1,50 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { guardCliente } from '@/lib/supabase/auth-guard'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
-export const maxDuration = 60
+export const maxDuration = 30
 
-const PROMPT = `Abaixo está o texto extraído de um PDF de cadastro de fornecedores.
-Extraia todos os fornecedores e retorne APENAS linhas no formato:
-CODIGO|CNPJ|NOME
-
-Regras:
-- CNPJ/CPF apenas dígitos (sem pontos, barras ou traços), 14 dígitos para CNPJ ou 11 para CPF
-- Uma linha por fornecedor
-- Sem cabeçalho, sem explicações, sem linhas em branco
-- Extraia TODOS os registros
-
-TEXTO DO PDF:
-`
-
-// Divide texto em chunks de até CHUNK_SIZE chars, cortando em quebra de linha
-function splitChunks(text: string, size: number): string[] {
-  const chunks: string[] = []
-  let start = 0
-  while (start < text.length) {
-    let end = Math.min(start + size, text.length)
-    if (end < text.length) {
-      const nl = text.lastIndexOf('\n', end)
-      if (nl > start) end = nl + 1
-    }
-    chunks.push(text.slice(start, end))
-    start = end
-  }
-  return chunks
-}
-
-async function processarChunk(client: Anthropic, chunk: string): Promise<string> {
-  const res = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    messages: [{ role: 'user', content: PROMPT + chunk }],
-  })
-  return res.content[0]?.type === 'text' ? res.content[0].text : ''
-}
+type Registro = { codigo: string; cnpj: string; nome: string }
 
 export async function POST(
   request: NextRequest,
@@ -55,53 +16,14 @@ export async function POST(
   if (!guard.ok) return guard.response
 
   try {
-    const formData = await request.formData()
-    const arquivo = formData.get('arquivo') as File | null
-    if (!arquivo) return NextResponse.json({ erro: 'Arquivo não enviado' }, { status: 400 })
+    const { registros } = await request.json() as { registros: Registro[] }
+    if (!registros?.length) return NextResponse.json({ erro: 'Nenhum registro recebido' }, { status: 400 })
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
-
-    // Extrai texto do PDF localmente (sem IA)
-    const buffer = Buffer.from(await arquivo.arrayBuffer())
-    const { text: rawText } = await pdfParse(buffer)
-
-    if (!rawText?.trim()) {
-      return NextResponse.json({ erro: 'Não foi possível extrair texto do PDF' }, { status: 422 })
-    }
-
-    // Processa em chunks de 15k chars — cada chamada Claude leva ~5-8s
-    const client = new Anthropic({ apiKey })
-    const chunks = splitChunks(rawText.slice(0, 120_000), 15_000)
-
-    let allOut = ''
-    for (const chunk of chunks) {
-      allOut += await processarChunk(client, chunk) + '\n'
-    }
-
-    const records = allOut.split('\n')
-      .map(l => l.trim())
-      .filter(l => l && l.includes('|'))
-      .map(l => {
-        const p = l.split('|')
-        return {
-          codigo: (p[0] ?? '').trim(),
-          cnpj:   (p[1] ?? '').replace(/\D/g, '').padStart(14, '0'),
-          nome:   (p[2] ?? '').trim(),
-        }
-      })
-      .filter(r => r.codigo && r.nome)
-
-    if (records.length === 0) {
-      return NextResponse.json({ erro: 'Nenhum fornecedor encontrado no PDF' }, { status: 422 })
-    }
-
-    // Insere em lotes de 200
-    const BATCH = 200
     let inseridos = 0, atualizados = 0
+    const BATCH = 200
 
-    for (let i = 0; i < records.length; i += BATCH) {
-      const batch = records.slice(i, i + BATCH)
+    for (let i = 0; i < registros.length; i += BATCH) {
+      const batch = registros.slice(i, i + BATCH)
       const codigos = batch.map(r => r.codigo)
       const ph = codigos.map((_, j) => `$${j + 2}`).join(',')
       const existentes = await prisma.$queryRawUnsafe<{ id: string; codigo_erp: string }[]>(
@@ -131,9 +53,9 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ inseridos, atualizados, total: records.length })
+    return NextResponse.json({ inseridos, atualizados, total: registros.length })
   } catch (err) {
     console.error('[importar-fornecedores-cadastro]', err)
-    return NextResponse.json({ erro: err instanceof Error ? err.message : 'Erro ao processar PDF' }, { status: 500 })
+    return NextResponse.json({ erro: err instanceof Error ? err.message : 'Erro ao importar' }, { status: 500 })
   }
 }

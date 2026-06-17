@@ -1,50 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { guardCliente } from '@/lib/supabase/auth-guard'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
-export const maxDuration = 60
+export const maxDuration = 30
 
-const PROMPT = `Abaixo está o texto extraído de um PDF de contas a pagar.
-Extraia todas as contas e retorne APENAS linhas no formato:
-CODIGO_FORN|NOME_FORN|DOCUMENTO|VENCIMENTO|VALOR_PARCELA|VALOR_PAGO|SALDO|SITUACAO
-
-Regras:
-- VENCIMENTO no formato YYYY-MM-DD (ou vazio se não houver)
-- VALOR_PARCELA, VALOR_PAGO e SALDO com ponto decimal (ex: 176.92)
-- SITUACAO deve ser exatamente: Aberta, Pago ou Parcial
-- Uma linha por conta, sem cabeçalho, sem explicações
-- Extraia TODOS os registros
-
-TEXTO DO PDF:
-`
-
-// Divide texto em chunks de até CHUNK_SIZE chars, cortando em quebra de linha
-function splitChunks(text: string, size: number): string[] {
-  const chunks: string[] = []
-  let start = 0
-  while (start < text.length) {
-    let end = Math.min(start + size, text.length)
-    if (end < text.length) {
-      const nl = text.lastIndexOf('\n', end)
-      if (nl > start) end = nl + 1
-    }
-    chunks.push(text.slice(start, end))
-    start = end
-  }
-  return chunks
-}
-
-async function processarChunk(client: Anthropic, chunk: string): Promise<string> {
-  const res = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 2048,
-    messages: [{ role: 'user', content: PROMPT + chunk }],
-  })
-  return res.content[0]?.type === 'text' ? res.content[0].text : ''
+type Registro = {
+  fornecedor_codigo: string; fornecedor_nome: string; documento: string
+  vencimento: string | null; valor_parcela: number; valor_pago: number
+  saldo: number; situacao: string
 }
 
 export async function POST(
@@ -56,60 +20,8 @@ export async function POST(
   if (!guard.ok) return guard.response
 
   try {
-    const formData = await request.formData()
-    const arquivo   = formData.get('arquivo') as File | null
-    const substituir = formData.get('substituir') === 'true'
-
-    if (!arquivo) return NextResponse.json({ erro: 'Arquivo não enviado' }, { status: 400 })
-
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
-
-    // Extrai texto do PDF localmente
-    const buffer = Buffer.from(await arquivo.arrayBuffer())
-    const { text: rawText } = await pdfParse(buffer)
-
-    if (!rawText?.trim()) {
-      return NextResponse.json({ erro: 'Não foi possível extrair texto do PDF' }, { status: 422 })
-    }
-
-    // Processa em chunks de 15k chars — cada chamada Claude leva ~5-8s
-    const client = new Anthropic({ apiKey })
-    const chunks = splitChunks(rawText.slice(0, 120_000), 15_000)
-
-    let allOut = ''
-    for (const chunk of chunks) {
-      allOut += await processarChunk(client, chunk) + '\n'
-    }
-
-    type Conta = {
-      fornecedor_codigo: string; fornecedor_nome: string; documento: string
-      vencimento: string | null; valor_parcela: number; valor_pago: number
-      saldo: number; situacao: string
-    }
-
-    const records: Conta[] = allOut.split('\n')
-      .map(l => l.trim())
-      .filter(l => l && l.includes('|'))
-      .map(l => {
-        const p = l.split('|')
-        const sit = (p[7] ?? '').trim()
-        return {
-          fornecedor_codigo: (p[0] ?? '').trim(),
-          fornecedor_nome:   (p[1] ?? '').trim(),
-          documento:         (p[2] ?? '').trim(),
-          vencimento:        (p[3] ?? '').trim() || null,
-          valor_parcela:     parseFloat(p[4] ?? '0') || 0,
-          valor_pago:        parseFloat(p[5] ?? '0') || 0,
-          saldo:             parseFloat(p[6] ?? '0') || 0,
-          situacao:          ['Aberta','Pago','Parcial'].includes(sit) ? sit : 'Aberta',
-        }
-      })
-      .filter(r => r.fornecedor_nome && r.documento)
-
-    if (records.length === 0) {
-      return NextResponse.json({ erro: 'Nenhuma conta encontrada no PDF' }, { status: 422 })
-    }
+    const { registros, substituir } = await request.json() as { registros: Registro[]; substituir?: boolean }
+    if (!registros?.length) return NextResponse.json({ erro: 'Nenhum registro recebido' }, { status: 400 })
 
     if (substituir) {
       await prisma.$executeRawUnsafe(
@@ -118,16 +30,14 @@ export async function POST(
       )
     }
 
-    // Busca duplicatas em lote
     const existentes = substituir ? [] : await prisma.$queryRawUnsafe<{ fornecedor_nome: string; documento: string }[]>(
       `SELECT fornecedor_nome, documento FROM contas_pagar WHERE cliente_id = $1`,
       clienteId
     )
     const existSet = new Set(existentes.map(e => `${e.fornecedor_nome}||${e.documento}`))
-    const novos    = records.filter(r => !existSet.has(`${r.fornecedor_nome}||${r.documento}`))
-    const ignorados = records.length - novos.length
+    const novos    = registros.filter(r => !existSet.has(`${r.fornecedor_nome}||${r.documento}`))
+    const ignorados = registros.length - novos.length
 
-    // Bulk INSERT em lotes de 100
     const BATCH = 100
     for (let i = 0; i < novos.length; i += BATCH) {
       const batch = novos.slice(i, i + BATCH)
@@ -150,9 +60,9 @@ export async function POST(
       )
     }
 
-    return NextResponse.json({ inseridos: novos.length, ignorados, total: records.length })
+    return NextResponse.json({ inseridos: novos.length, ignorados, total: registros.length })
   } catch (err) {
     console.error('[importar-contas-pagar]', err)
-    return NextResponse.json({ erro: err instanceof Error ? err.message : 'Erro ao processar PDF' }, { status: 500 })
+    return NextResponse.json({ erro: err instanceof Error ? err.message : 'Erro ao importar' }, { status: 500 })
   }
 }
