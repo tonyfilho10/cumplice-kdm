@@ -40,13 +40,13 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
   {
     section: 'Lançamentos',
     items: [
+      { id: 'banco',          icon: Landmark,          label: 'Banco' },
       { id: 'compras',        icon: ShoppingCart,      label: 'Compras' },
+      { id: 'despesas',       icon: CreditCard,        label: 'Despesas' },
+      { id: 'fornecedores',   icon: Handshake,         label: 'Fornecedores' },
       { id: 'notas',          icon: FileText,          label: 'Notas Fiscais' },
       { id: 'notas-servico',  icon: BriefcaseBusiness, label: 'Notas de Serviço' },
       { id: 'sped',           icon: FileSpreadsheet,   label: 'SPED EFD' },
-      { id: 'banco',          icon: Landmark,          label: 'Banco' },
-      { id: 'despesas',       icon: CreditCard,        label: 'Despesas' },
-      { id: 'fornecedores',  icon: Handshake,         label: 'Fornecedores' },
     ],
   },
   {

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ContaPagar, BancoLancamento, FornecedorCadastro } from '@/lib/supabase/types'
 import { Card, CardTitle, Modal, Toast, brl, fmtData } from '@/components/ui'
-import { Building2, Search, CheckCircle2, AlertCircle, Clock, Link2, Users } from 'lucide-react'
+import { Search, CheckCircle2, AlertCircle, Clock, Link2, Users, GitMerge } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
@@ -45,6 +45,7 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
   const [lancamentoSelecionado, setLancamentoSelecionado] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [buscaFornecedor, setBuscaFornecedor] = useState('')
+  const [cruzando, setCruzando] = useState(false)
 
   const carregar = useCallback(async () => {
     const [{ data: contasData }, { data: fornData }, { data: saidasData }] = await Promise.all([
@@ -103,6 +104,27 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     setSalvando(false)
   }
 
+  async function cruzarAgora() {
+    setCruzando(true)
+    try {
+      const res = await fetch(`/api/clientes/${clienteId}/cruzar-fornecedores`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ periodo }),
+      })
+      const result = await res.json()
+      if (result.erro) {
+        setToast('Erro: ' + result.erro)
+      } else {
+        setToast(result.mensagem)
+        if (result.baixas > 0) { await carregar(); onRecarregar() }
+      }
+    } catch {
+      setToast('Erro ao cruzar fornecedores')
+    }
+    setCruzando(false)
+  }
+
   const contasFiltradas = useMemo(() => contas.filter(c => {
     if (filtroSituacao && c.situacao !== filtroSituacao) return false
     if (busca) {
@@ -136,6 +158,18 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
 
   return (
     <div className="flex flex-col gap-4">
+
+      {/* ── Barra de ações ── */}
+      <div className="flex justify-end">
+        <button
+          onClick={cruzarAgora}
+          disabled={cruzando}
+          className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+        >
+          <GitMerge className="h-4 w-4" />
+          {cruzando ? 'Cruzando...' : 'Cruzar com banco'}
+        </button>
+      </div>
 
       {/* ── KPIs ── */}
       <div className="grid grid-cols-4 gap-3">

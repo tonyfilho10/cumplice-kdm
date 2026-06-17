@@ -76,7 +76,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   // Seções que precisam de um cliente ativo
-  const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','notas-servico','sped','banco','despesas','cruzamento','projecao','config']
+  const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','notas-servico','sped','banco','despesas','fornecedores','cruzamento','projecao','config']
   const precisaCliente = SECOES_COM_CLIENTE.includes(secao)
 
   const supabase = createClient()
