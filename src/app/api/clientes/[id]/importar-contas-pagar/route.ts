@@ -23,118 +23,128 @@ export async function POST(
   const guard = await guardCliente(clienteId)
   if (!guard.ok) return guard.response
 
-  const encoder = new TextEncoder()
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
-  const writer = writable.getWriter()
+  const formData = await request.formData()
+  const arquivo   = formData.get('arquivo') as File | null
+  const substituir = formData.get('substituir') === 'true'
 
-  const send = (obj: object) => writer.write(encoder.encode(JSON.stringify(obj) + '\n'))
-
-  async function run() {
-    try {
-      const formData = await request.formData()
-      const arquivo   = formData.get('arquivo') as File | null
-      const substituir = formData.get('substituir') === 'true'
-
-      if (!arquivo) { await send({ status: 'error', erro: 'Arquivo não enviado' }); return }
-
-      const apiKey = process.env.ANTHROPIC_API_KEY
-      if (!apiKey) { await send({ status: 'error', erro: 'ANTHROPIC_API_KEY não configurada' }); return }
-
-      await send({ status: 'processing', msg: 'Analisando PDF...' })
-
-      const base64 = Buffer.from(await arquivo.arrayBuffer()).toString('base64')
-      const client = new Anthropic({ apiKey })
-
-      const stream = client.messages.stream({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-            { type: 'text', text: PROMPT },
-          ],
-        }],
-      })
-
-      type ContaRaw = {
-        fornecedor_codigo?: string; fornecedor_nome: string; documento: string
-        emissao?: string | null; entrada?: string | null; vencimento?: string | null
-        valor_parcela: number; valor_pago?: number; saldo?: number; situacao: string
-      }
-
-      let buf = ''
-      const records: ContaRaw[] = []
-
-      for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-          buf += chunk.delta.text
-          const lines = buf.split('\n')
-          buf = lines.pop() ?? ''
-          for (const line of lines) {
-            const t = line.trim()
-            if (!t) continue
-            try {
-              const r = JSON.parse(t)
-              if (r.fornecedor_nome && r.documento) { records.push(r); await send({ status: 'progress', count: records.length }) }
-            } catch { /* linha parcial */ }
-          }
-        }
-      }
-      if (buf.trim()) {
-        try { const r = JSON.parse(buf.trim()); if (r.fornecedor_nome) records.push(r) } catch {}
-      }
-
-      await send({ status: 'processing', msg: `Salvando ${records.length} contas...` })
-
-      if (substituir) {
-        await prisma.$executeRawUnsafe(
-          `DELETE FROM contas_pagar WHERE cliente_id = $1 AND banco_lancamento_id IS NULL`,
-          clienteId
-        )
-      }
-
-      let inseridos = 0, ignorados = 0
-      for (const c of records) {
-        const valorParcela = Number(c.valor_parcela) || 0
-        const valorPago    = Number(c.valor_pago)    || 0
-        const saldo        = c.saldo != null ? Number(c.saldo) : valorParcela - valorPago
-        const situacao     = ['Aberta', 'Pago', 'Parcial'].includes(c.situacao) ? c.situacao : 'Aberta'
-
-        if (!substituir) {
-          const dup = await prisma.$queryRawUnsafe<{ id: string }[]>(
-            `SELECT id FROM contas_pagar WHERE cliente_id = $1 AND fornecedor_nome = $2 AND documento = $3 LIMIT 1`,
-            clienteId, c.fornecedor_nome, c.documento
-          )
-          if (dup.length > 0) { ignorados++; continue }
-        }
-
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO contas_pagar
-            (id, cliente_id, fornecedor_codigo, fornecedor_nome, documento,
-             emissao, entrada, vencimento, valor_parcela, valor_pago, saldo, situacao)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-          randomUUID(), clienteId,
-          c.fornecedor_codigo ?? '',
-          c.fornecedor_nome,
-          c.documento,
-          c.emissao    ?? null,
-          c.entrada    ?? null,
-          c.vencimento ?? null,
-          valorParcela, valorPago, saldo, situacao
-        )
-        inseridos++
-      }
-
-      await send({ status: 'done', inseridos, ignorados, total: records.length })
-    } catch (err) {
-      await send({ status: 'error', erro: err instanceof Error ? err.message : String(err) })
-    } finally {
-      await writer.close()
-    }
+  if (!arquivo) {
+    return Response.json({ erro: 'Arquivo não enviado' }, { status: 400 })
   }
 
-  run()
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return Response.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
+  }
 
-  return new Response(readable, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+  const base64 = Buffer.from(await arquivo.arrayBuffer()).toString('base64')
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj: object) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'))
+
+      try {
+        await send({ status: 'processing', msg: 'Analisando PDF...' })
+
+        const client = new Anthropic({ apiKey })
+        const aiStream = client.messages.stream({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 8192,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+              { type: 'text', text: PROMPT },
+            ],
+          }],
+        })
+
+        type ContaRaw = {
+          fornecedor_codigo?: string; fornecedor_nome: string; documento: string
+          emissao?: string | null; entrada?: string | null; vencimento?: string | null
+          valor_parcela: number; valor_pago?: number; saldo?: number; situacao: string
+        }
+
+        let buf = ''
+        const records: ContaRaw[] = []
+
+        for await (const chunk of aiStream) {
+          if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+            buf += chunk.delta.text
+            const lines = buf.split('\n')
+            buf = lines.pop() ?? ''
+            for (const line of lines) {
+              const t = line.trim()
+              if (!t) continue
+              try {
+                const r = JSON.parse(t)
+                if (r.fornecedor_nome && r.documento) {
+                  records.push(r)
+                  await send({ status: 'progress', count: records.length })
+                }
+              } catch { /* linha parcial */ }
+            }
+          }
+        }
+        if (buf.trim()) {
+          try {
+            const r = JSON.parse(buf.trim())
+            if (r.fornecedor_nome) records.push(r)
+          } catch {}
+        }
+
+        await send({ status: 'processing', msg: `Salvando ${records.length} contas...` })
+
+        if (substituir) {
+          await prisma.$executeRawUnsafe(
+            `DELETE FROM contas_pagar WHERE cliente_id = $1 AND banco_lancamento_id IS NULL`,
+            clienteId
+          )
+        }
+
+        let inseridos = 0, ignorados = 0
+        for (const c of records) {
+          const valorParcela = Number(c.valor_parcela) || 0
+          const valorPago    = Number(c.valor_pago)    || 0
+          const saldo        = c.saldo != null ? Number(c.saldo) : valorParcela - valorPago
+          const situacao     = ['Aberta', 'Pago', 'Parcial'].includes(c.situacao) ? c.situacao : 'Aberta'
+
+          if (!substituir) {
+            const dup = await prisma.$queryRawUnsafe<{ id: string }[]>(
+              `SELECT id FROM contas_pagar WHERE cliente_id = $1 AND fornecedor_nome = $2 AND documento = $3 LIMIT 1`,
+              clienteId, c.fornecedor_nome, c.documento
+            )
+            if (dup.length > 0) { ignorados++; continue }
+          }
+
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO contas_pagar
+              (id, cliente_id, fornecedor_codigo, fornecedor_nome, documento,
+               emissao, entrada, vencimento, valor_parcela, valor_pago, saldo, situacao)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+            randomUUID(), clienteId,
+            c.fornecedor_codigo ?? '',
+            c.fornecedor_nome,
+            c.documento,
+            c.emissao    ?? null,
+            c.entrada    ?? null,
+            c.vencimento ?? null,
+            valorParcela, valorPago, saldo, situacao
+          )
+          inseridos++
+        }
+
+        await send({ status: 'done', inseridos, ignorados, total: records.length })
+      } catch (err) {
+        controller.enqueue(
+          encoder.encode(JSON.stringify({ status: 'error', erro: err instanceof Error ? err.message : String(err) }) + '\n')
+        )
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
 }
