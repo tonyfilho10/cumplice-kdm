@@ -3,25 +3,24 @@ import Anthropic from '@anthropic-ai/sdk'
 import { guardCliente } from '@/lib/supabase/auth-guard'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text: string }>
 
 export const maxDuration = 60
 
-// Formato compacto pipe-delimitado — ~12 tokens/linha vs ~37 no JSON
-// 243 linhas × 12 tokens = 2.916 tokens → bem abaixo do limite
-const PROMPT = `Extraia todas as contas a pagar deste PDF.
-
-Retorne APENAS linhas no formato abaixo, sem cabeçalho, sem explicações:
+const PROMPT = `Abaixo está o texto extraído de um PDF de contas a pagar.
+Extraia todas as contas e retorne APENAS linhas no formato:
 CODIGO_FORN|NOME_FORN|DOCUMENTO|VENCIMENTO|VALOR_PARCELA|VALOR_PAGO|SALDO|SITUACAO
-
-Exemplo:
-182|BONOR INDUSTRIAL SA|29153|2026-01-26|176.92|0.00|176.92|Aberta
-023|EMPRESA XYZ LTDA|45678|2026-02-15|1500.00|1500.00|0.00|Pago
 
 Regras:
 - VENCIMENTO no formato YYYY-MM-DD (ou vazio se não houver)
-- VALOR_PARCELA, VALOR_PAGO e SALDO com ponto decimal
+- VALOR_PARCELA, VALOR_PAGO e SALDO com ponto decimal (ex: 176.92)
 - SITUACAO deve ser exatamente: Aberta, Pago ou Parcial
-- Extraia TODOS os registros sem pular nenhum`
+- Uma linha por conta, sem cabeçalho, sem explicações
+- Extraia TODOS os registros
+
+TEXTO DO PDF:
+`
 
 export async function POST(
   request: NextRequest,
@@ -41,22 +40,26 @@ export async function POST(
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
 
-    const base64 = Buffer.from(await arquivo.arrayBuffer()).toString('base64')
-    const client = new Anthropic({ apiKey })
+    // Extrai texto do PDF localmente — rápido e sem timeout
+    const buffer = Buffer.from(await arquivo.arrayBuffer())
+    const { text: pdfText } = await pdfParse(buffer)
 
+    if (!pdfText?.trim()) {
+      return NextResponse.json({ erro: 'Não foi possível extrair texto do PDF' }, { status: 422 })
+    }
+
+    // Envia só o texto para Claude — sem overhead de visão de PDF
+    const client = new Anthropic({ apiKey })
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       messages: [{
         role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-          { type: 'text', text: PROMPT },
-        ],
+        content: PROMPT + pdfText,
       }],
     })
 
-    const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    const out = response.content[0]?.type === 'text' ? response.content[0].text : ''
 
     type Conta = {
       fornecedor_codigo: string; fornecedor_nome: string; documento: string
@@ -64,12 +67,12 @@ export async function POST(
       saldo: number; situacao: string
     }
 
-    const records: Conta[] = text.split('\n')
+    const records: Conta[] = out.split('\n')
       .map(l => l.trim())
       .filter(l => l && l.includes('|'))
       .map(l => {
         const p = l.split('|')
-        const situacaoRaw = (p[7] ?? '').trim()
+        const sit = (p[7] ?? '').trim()
         return {
           fornecedor_codigo: (p[0] ?? '').trim(),
           fornecedor_nome:   (p[1] ?? '').trim(),
@@ -78,7 +81,7 @@ export async function POST(
           valor_parcela:     parseFloat(p[4] ?? '0') || 0,
           valor_pago:        parseFloat(p[5] ?? '0') || 0,
           saldo:             parseFloat(p[6] ?? '0') || 0,
-          situacao:          ['Aberta','Pago','Parcial'].includes(situacaoRaw) ? situacaoRaw : 'Aberta',
+          situacao:          ['Aberta','Pago','Parcial'].includes(sit) ? sit : 'Aberta',
         }
       })
       .filter(r => r.fornecedor_nome && r.documento)
@@ -94,15 +97,13 @@ export async function POST(
       )
     }
 
-    // Busca duplicatas por (fornecedor_nome, documento) para evitar re-inserção
-    const chaves = records.map(r => `${r.fornecedor_nome}||${r.documento}`)
+    // Busca duplicatas em lote
     const existentes = substituir ? [] : await prisma.$queryRawUnsafe<{ fornecedor_nome: string; documento: string }[]>(
       `SELECT fornecedor_nome, documento FROM contas_pagar WHERE cliente_id = $1`,
       clienteId
     )
     const existSet = new Set(existentes.map(e => `${e.fornecedor_nome}||${e.documento}`))
-
-    const novos = records.filter((_, i) => !existSet.has(chaves[i]))
+    const novos    = records.filter(r => !existSet.has(`${r.fornecedor_nome}||${r.documento}`))
     const ignorados = records.length - novos.length
 
     // Bulk INSERT em lotes de 100
