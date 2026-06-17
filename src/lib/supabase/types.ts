@@ -124,6 +124,33 @@ export type Divergencia = {
   created_at: string
 }
 
+export type FornecedorCadastro = {
+  id: string
+  cliente_id: string
+  cnpj: string
+  codigo_erp?: Maybe<string>
+  nome: string
+  created_at: string
+}
+
+export type ContaPagar = {
+  id: string
+  cliente_id: string
+  fornecedor_codigo: string
+  fornecedor_nome: string
+  documento: string
+  emissao?: Maybe<string>
+  entrada?: Maybe<string>
+  vencimento?: Maybe<string>
+  valor_parcela: number
+  valor_pago: number
+  saldo: number
+  situacao: 'Aberta' | 'Pago' | 'Parcial'
+  banco_lancamento_id?: Maybe<string>
+  observacao?: Maybe<string>
+  created_at: string
+}
+
 export type KPIs = {
   faturamento_nf: number
   entradas_banco: number

@@ -14,7 +14,7 @@ import type { Section } from '@/app/dashboard/DashboardClient'
 import {
   LayoutDashboard, ShoppingCart, FileText, FileSpreadsheet, Landmark, CreditCard,
   ScanSearch, TrendingUp, Settings, LogOut, ChevronLeft, ChevronRight, Menu, Building2, Users, Wrench, Search,
-  FileDown, BriefcaseBusiness,
+  FileDown, BriefcaseBusiness, Handshake,
 } from 'lucide-react'
 import MonthPicker from '@/components/MonthPicker'
 
@@ -46,6 +46,7 @@ const NAV_ITEMS: { section: string; items: NavItem[] }[] = [
       { id: 'sped',           icon: FileSpreadsheet,   label: 'SPED EFD' },
       { id: 'banco',          icon: Landmark,          label: 'Banco' },
       { id: 'despesas',       icon: CreditCard,        label: 'Despesas' },
+      { id: 'fornecedores',  icon: Handshake,         label: 'Fornecedores' },
     ],
   },
   {

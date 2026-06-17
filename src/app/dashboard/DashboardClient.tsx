@@ -21,12 +21,13 @@ import Ferramentas from '@/components/sections/Ferramentas'
 import BuscaLancamentos from '@/components/sections/BuscaLancamentos'
 import XmlParaPdf from '@/components/sections/XmlParaPdf'
 import NotasServico from '@/components/sections/NotasServico'
+import Fornecedores from '@/components/sections/Fornecedores'
 import { RefreshCw, Building2, ArrowRight } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 export type Section =
   | 'visao-geral' | 'compras' | 'notas' | 'notas-servico' | 'sped' | 'banco'
-  | 'despesas' | 'cruzamento' | 'projecao' | 'config' | 'clientes' | 'usuarios' | 'ferramentas' | 'busca' | 'xml-pdf'
+  | 'despesas' | 'fornecedores' | 'cruzamento' | 'projecao' | 'config' | 'clientes' | 'usuarios' | 'ferramentas' | 'busca' | 'xml-pdf'
 
 const SECTION_TITLES: Record<Section, [string, string]> = {
   'visao-geral': ['Visão Geral', 'Painel de alertas e KPIs do mês'],
@@ -36,6 +37,7 @@ const SECTION_TITLES: Record<Section, [string, string]> = {
   'sped':        ['SPED EFD', 'Importação e documentos da escrituração fiscal digital'],
   'banco':       ['Banco', 'Movimentações bancárias'],
   'despesas':    ['Despesas', 'Despesas operacionais do mês'],
+  'fornecedores':['Fornecedores', 'Cadastro, contas a pagar e cruzamento bancário'],
   'cruzamento':  ['Análise de Tendências de Contas', 'Divergências identificadas automaticamente'],
   'projecao':    ['Simulador de Imposto', 'Estimativa de impostos e recomendações'],
   'config':      ['Perfil do Cliente', 'Configurações e thresholds de alerta'],
@@ -181,6 +183,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
               {secao === 'sped'        && <Sped {...sectionProps} />}
               {secao === 'banco'       && <Banco {...sectionProps} />}
               {secao === 'despesas'    && <Despesas {...sectionProps} />}
+              {secao === 'fornecedores' && <Fornecedores {...sectionProps} />}
               {secao === 'cruzamento'  && <Cruzamento {...sectionProps} />}
               {secao === 'projecao'    && <Projecao {...sectionProps} cliente={clienteAtivo} />}
               {secao === 'config'      && <Config {...sectionProps} cliente={clienteAtivo} onAtualizar={recarregar} />}
