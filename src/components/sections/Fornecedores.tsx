@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { ContaPagar, BancoLancamento, FornecedorCadastro } from '@/lib/supabase/types'
 import { Card, CardTitle, Modal, Toast, brl, fmtData } from '@/components/ui'
-import { Search, CheckCircle2, AlertCircle, Clock, Link2, Users, GitMerge } from 'lucide-react'
+import { Search, CheckCircle2, AlertCircle, Clock, Link2, Users, GitMerge, Upload, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -13,7 +13,9 @@ type Props = {
 }
 
 type ContaComMatch = ContaPagar & { matchesBanco?: BancoLancamento[] }
-type View = 'contas' | 'cadastro'
+type View = 'contas' | 'cadastro' | 'importar'
+
+type ImportStatus = { loading: boolean; msg: string; ok: boolean | null }
 
 const SITUACAO_CORES: Record<string, string> = {
   Aberta:  'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
@@ -50,6 +52,9 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
   const [buscaFornecedor, setBuscaFornecedor] = useState('')
   const [cruzando, setCruzando] = useState(false)
   const [baixandoMassa, setBaixandoMassa] = useState(false)
+  const [importCadastro, setImportCadastro] = useState<ImportStatus>({ loading: false, msg: '', ok: null })
+  const [importContas, setImportContas]     = useState<ImportStatus>({ loading: false, msg: '', ok: null })
+  const [substituirContas, setSubstituirContas] = useState(false)
 
   const carregar = useCallback(async () => {
     const [{ data: contasData }, { data: fornData }, { data: saidasData }] = await Promise.all([
@@ -127,6 +132,43 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     setToast(`${ok} de ${pendentes.length} baixa(s) registrada(s).`)
     await carregar()
     onRecarregar()
+  }
+
+  async function uploadCadastro(file: File) {
+    setImportCadastro({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
+    const fd = new FormData()
+    fd.append('arquivo', file)
+    try {
+      const res  = await fetch(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data.erro) {
+        setImportCadastro({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
+      } else {
+        setImportCadastro({ loading: false, msg: `${data.inseridos} inseridos · ${data.atualizados} atualizados (total ${data.total})`, ok: true })
+        await carregar()
+      }
+    } catch {
+      setImportCadastro({ loading: false, msg: 'Erro de conexão', ok: false })
+    }
+  }
+
+  async function uploadContas(file: File) {
+    setImportContas({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
+    const fd = new FormData()
+    fd.append('arquivo', file)
+    fd.append('substituir', String(substituirContas))
+    try {
+      const res  = await fetch(`/api/clientes/${clienteId}/importar-contas-pagar`, { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data.erro) {
+        setImportContas({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
+      } else {
+        setImportContas({ loading: false, msg: `${data.inseridos} inseridas · ${data.ignorados} já existiam (total ${data.total})`, ok: true })
+        await carregar()
+      }
+    } catch {
+      setImportContas({ loading: false, msg: 'Erro de conexão', ok: false })
+    }
   }
 
   async function cruzarAgora() {
@@ -226,7 +268,11 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
 
       {/* ── Tabs ── */}
       <div className="flex gap-1 border-b border-border">
-        {(['contas', 'cadastro'] as View[]).map(v => (
+        {([
+          ['contas',   'Contas a Pagar'],
+          ['cadastro', `Cadastro (${fornecedores.length})`],
+          ['importar', 'Importar PDF'],
+        ] as [View, string][]).map(([v, label]) => (
           <button
             key={v}
             onClick={() => setView(v)}
@@ -235,7 +281,7 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
               view === v ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
-            {v === 'contas' ? 'Contas a Pagar' : `Cadastro (${fornecedores.length})`}
+            {label}
           </button>
         ))}
       </div>
@@ -429,6 +475,88 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
         </Card>
       )}
 
+      {/* ══ VIEW: IMPORTAR ══ */}
+      {view === 'importar' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Card: Cadastro de Fornecedores */}
+          <Card>
+            <CardTitle>
+              <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Cadastro de Fornecedores</span>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mb-4">
+              PDF exportado do ERP com a relação de fornecedores (código, CNPJ, razão social).
+              Registros existentes serão atualizados; novos serão inseridos.
+            </p>
+
+            <DropZone
+              accept=".pdf"
+              loading={importCadastro.loading}
+              onFile={uploadCadastro}
+              label="Arraste o PDF do cadastro ou clique"
+            />
+
+            {importCadastro.msg && (
+              <div className={cn(
+                'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm border',
+                importCadastro.ok === true  && 'bg-green-500/10 border-green-500/30 text-green-400',
+                importCadastro.ok === false && 'bg-red-500/10 border-red-500/30 text-red-400',
+                importCadastro.ok === null  && 'bg-secondary border-border text-muted-foreground',
+              )}>
+                {importCadastro.loading
+                  ? <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  : importCadastro.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
+                {importCadastro.msg}
+              </div>
+            )}
+          </Card>
+
+          {/* Card: Contas a Pagar */}
+          <Card>
+            <CardTitle>
+              <span className="flex items-center gap-2"><Clock className="h-4 w-4" /> Contas a Pagar</span>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mb-3">
+              PDF com a relação de contas a pagar (fornecedor, documento, vencimento, valores).
+            </p>
+
+            <label className="flex items-center gap-2 mb-4 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={substituirContas}
+                onChange={e => setSubstituirContas(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-primary"
+              />
+              <span className="text-xs text-muted-foreground">
+                Substituir contas existentes sem baixa (reimportar)
+              </span>
+            </label>
+
+            <DropZone
+              accept=".pdf"
+              loading={importContas.loading}
+              onFile={uploadContas}
+              label="Arraste o PDF das contas a pagar ou clique"
+            />
+
+            {importContas.msg && (
+              <div className={cn(
+                'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-sm border',
+                importContas.ok === true  && 'bg-green-500/10 border-green-500/30 text-green-400',
+                importContas.ok === false && 'bg-red-500/10 border-red-500/30 text-red-400',
+                importContas.ok === null  && 'bg-secondary border-border text-muted-foreground',
+              )}>
+                {importContas.loading
+                  ? <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  : importContas.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
+                {importContas.msg}
+              </div>
+            )}
+          </Card>
+
+        </div>
+      )}
+
       {/* ══ MODAL: DAR BAIXA ══ */}
       {dando_baixa && (
         <Modal title="Dar Baixa — Vincular Pagamento" onClose={() => { setDandoBaixa(null); setLancamentoSelecionado('') }}>
@@ -514,5 +642,31 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
 
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
+  )
+}
+
+function DropZone({ accept, loading, onFile, label }: {
+  accept: string; loading: boolean; onFile: (f: File) => void; label: string
+}) {
+  return (
+    <label className={cn(
+      'flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors',
+      loading
+        ? 'border-border/40 text-muted-foreground/40 cursor-not-allowed'
+        : 'border-border hover:border-primary hover:bg-primary/5 text-muted-foreground hover:text-primary',
+    )}>
+      {loading
+        ? <RefreshCw className="h-6 w-6 animate-spin" />
+        : <Upload className="h-6 w-6" />}
+      <span className="text-sm font-medium text-center">{loading ? 'Processando...' : label}</span>
+      <span className="text-xs">{accept.toUpperCase().replace('.', '')}</span>
+      <input
+        type="file"
+        accept={accept}
+        className="hidden"
+        disabled={loading}
+        onChange={e => { const f = e.target.files?.[0]; if (f) { onFile(f); e.target.value = '' } }}
+      />
+    </label>
   )
 }
