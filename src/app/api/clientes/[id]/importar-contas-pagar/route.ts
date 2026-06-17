@@ -22,6 +22,31 @@ Regras:
 TEXTO DO PDF:
 `
 
+// Divide texto em chunks de até CHUNK_SIZE chars, cortando em quebra de linha
+function splitChunks(text: string, size: number): string[] {
+  const chunks: string[] = []
+  let start = 0
+  while (start < text.length) {
+    let end = Math.min(start + size, text.length)
+    if (end < text.length) {
+      const nl = text.lastIndexOf('\n', end)
+      if (nl > start) end = nl + 1
+    }
+    chunks.push(text.slice(start, end))
+    start = end
+  }
+  return chunks
+}
+
+async function processarChunk(client: Anthropic, chunk: string): Promise<string> {
+  const res = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: PROMPT + chunk }],
+  })
+  return res.content[0]?.type === 'text' ? res.content[0].text : ''
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,29 +65,22 @@ export async function POST(
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
 
-    // Extrai texto do PDF localmente — rápido e sem timeout
+    // Extrai texto do PDF localmente
     const buffer = Buffer.from(await arquivo.arrayBuffer())
     const { text: rawText } = await pdfParse(buffer)
 
-    // Limita a 80 mil chars para evitar prompts gigantes (≈ 20k tokens de entrada)
-    const pdfText = rawText?.slice(0, 80_000)
-
-    if (!pdfText?.trim()) {
+    if (!rawText?.trim()) {
       return NextResponse.json({ erro: 'Não foi possível extrair texto do PDF' }, { status: 422 })
     }
 
-    // Envia só o texto para Claude — sem overhead de visão de PDF
+    // Processa em chunks de 15k chars — cada chamada Claude leva ~5-8s
     const client = new Anthropic({ apiKey })
-    const response = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 6144,
-      messages: [{
-        role: 'user',
-        content: PROMPT + pdfText,
-      }],
-    })
+    const chunks = splitChunks(rawText.slice(0, 120_000), 15_000)
 
-    const out = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    let allOut = ''
+    for (const chunk of chunks) {
+      allOut += await processarChunk(client, chunk) + '\n'
+    }
 
     type Conta = {
       fornecedor_codigo: string; fornecedor_nome: string; documento: string
@@ -70,7 +88,7 @@ export async function POST(
       saldo: number; situacao: string
     }
 
-    const records: Conta[] = out.split('\n')
+    const records: Conta[] = allOut.split('\n')
       .map(l => l.trim())
       .filter(l => l && l.includes('|'))
       .map(l => {
