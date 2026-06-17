@@ -134,49 +134,41 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     onRecarregar()
   }
 
-  async function enviarPdf(
-    url: string,
-    fd: FormData,
-    setStatus: (s: ImportStatus) => void,
-    onDone: () => Promise<void>
-  ) {
-    setStatus({ loading: true, msg: 'Analisando PDF com IA... (pode levar até 1 minuto)', ok: null })
+  async function uploadCadastro(file: File) {
+    setImportCadastro({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
+    const fd = new FormData()
+    fd.append('arquivo', file)
     try {
-      const res  = await fetch(url, { method: 'POST', body: fd })
-      const text = await res.text()
-      let data: Record<string, unknown>
-      try { data = JSON.parse(text) }
-      catch { data = { erro: `Resposta inesperada do servidor (HTTP ${res.status})` } }
-
+      const res  = await fetch(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, { method: 'POST', body: fd })
+      const data = await res.json()
       if (data.erro) {
-        setStatus({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
+        setImportCadastro({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
       } else {
-        const inseridos  = data.inseridos  as number
-        const atualizados = data.atualizados as number | undefined
-        const ignorados  = data.ignorados  as number | undefined
-        const total      = data.total      as number
-        const detalhe = atualizados != null
-          ? `${inseridos} inseridos · ${atualizados} atualizados`
-          : `${inseridos} inseridas · ${ignorados ?? 0} já existiam`
-        setStatus({ loading: false, msg: `${detalhe} (total ${total})`, ok: true })
-        await onDone()
+        setImportCadastro({ loading: false, msg: `${data.inseridos} inseridos · ${data.atualizados} atualizados (total ${data.total})`, ok: true })
+        await carregar()
       }
-    } catch (err) {
-      setStatus({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
+    } catch {
+      setImportCadastro({ loading: false, msg: 'Erro de conexão', ok: false })
     }
   }
 
-  async function uploadCadastro(file: File) {
-    const fd = new FormData()
-    fd.append('arquivo', file)
-    await enviarPdf(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, fd, setImportCadastro, carregar)
-  }
-
   async function uploadContas(file: File) {
+    setImportContas({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
     const fd = new FormData()
     fd.append('arquivo', file)
     fd.append('substituir', String(substituirContas))
-    await enviarPdf(`/api/clientes/${clienteId}/importar-contas-pagar`, fd, setImportContas, carregar)
+    try {
+      const res  = await fetch(`/api/clientes/${clienteId}/importar-contas-pagar`, { method: 'POST', body: fd })
+      const data = await res.json()
+      if (data.erro) {
+        setImportContas({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
+      } else {
+        setImportContas({ loading: false, msg: `${data.inseridos} inseridas · ${data.ignorados} já existiam (total ${data.total})`, ok: true })
+        await carregar()
+      }
+    } catch {
+      setImportContas({ loading: false, msg: 'Erro de conexão', ok: false })
+    }
   }
 
   async function cruzarAgora() {
