@@ -6,6 +6,7 @@ import { guardCliente } from '@/lib/supabase/auth-guard'
 import { verificarPeriodoAberto } from '@/lib/supabase/periodo-guard'
 import { conciliarPeriodo } from '@/lib/conciliar'
 import { categoriaOFXParaDespesa } from '@/lib/extrato-para-despesas'
+import { cruzarFornecedores } from '@/lib/matching/fornecedores'
 
 export async function POST(
   request: NextRequest,
@@ -147,10 +148,16 @@ export async function POST(
     const resultadosConcil: Record<string, number> = {}
     for (const p of Object.keys(porPeriodo)) {
       try {
-        const r = await conciliarPeriodo(clienteId, p) // chamada direta
+        const r = await conciliarPeriodo(clienteId, p)
         resultadosConcil[p] = r.conciliados
       } catch { /* não bloqueia se falhar */ }
     }
+
+    // ── Cruzamento automático com contas a pagar de fornecedores ───────────
+    let baixasFornecedores = 0
+    try {
+      baixasFornecedores = await cruzarFornecedores(clienteId, Object.keys(porPeriodo))
+    } catch { /* não bloqueia importação se falhar */ }
 
     return NextResponse.json({
       inseridos: criados.count,
@@ -159,6 +166,7 @@ export async function POST(
       duplicados_ignorados: duplicatas + (novos.length - criados.count),
       conciliacoes: resultadosConcil,
       despesas_criadas: despesasCriadas,
+      baixas_fornecedores: baixasFornecedores,
     })
   } catch (err) {
     console.error('[importar-banco]', err)

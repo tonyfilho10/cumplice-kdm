@@ -115,7 +115,7 @@ function SidebarContent({
   const router = useRouter()
   const supabase = createClient()
 
-  const ABAS_RESTRITAS = new Set<Section>(['sped', 'notas', 'notas-servico', 'compras', 'config', 'clientes'])
+  const ABAS_RESTRITAS = new Set<Section>(['sped', 'notas', 'notas-servico', 'compras', 'config', 'clientes', 'fornecedores'])
   const semAcessoFiscal = papel === 'dono' || papel === 'standard'
   const navItems = NAV_ITEMS
     .map(group => ({
