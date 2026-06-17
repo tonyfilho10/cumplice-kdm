@@ -1,38 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { guardCliente } from '@/lib/supabase/auth-guard'
 import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
 
-export const maxDuration = 120
+export const maxDuration = 30
 
-const TOOL_SCHEMA = {
-  name: 'registrar_fornecedores',
-  description: 'Registra a lista de fornecedores extraída do PDF',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      fornecedores: {
-        type: 'array',
-        description: 'Lista de fornecedores encontrados',
-        items: {
-          type: 'object',
-          properties: {
-            codigo: { type: 'string', description: 'Código/ID do fornecedor no ERP' },
-            cnpj:   { type: 'string', description: 'CNPJ ou CPF do fornecedor (apenas dígitos ou formatado)' },
-            nome:   { type: 'string', description: 'Razão social ou nome do fornecedor' },
-          },
-          required: ['codigo', 'nome'],
-        },
-      },
-    },
-    required: ['fornecedores'],
-  },
-}
-
-const PROMPT = `Extraia todos os fornecedores deste PDF. O arquivo contém uma tabela com colunas como Código, CNPJ/CPF e Razão Social (ou Nome).
-
-Extraia TODOS os registros, sem pular nenhum. Use a ferramenta registrar_fornecedores para retornar os dados.`
+type Registro = { codigo: string; cnpj: string; nome: string }
 
 export async function POST(
   request: NextRequest,
@@ -43,75 +16,46 @@ export async function POST(
   if (!guard.ok) return guard.response
 
   try {
-    const formData = await request.formData()
-    const arquivo = formData.get('arquivo') as File | null
-    if (!arquivo) return NextResponse.json({ erro: 'Arquivo não enviado' }, { status: 400 })
+    const { registros } = await request.json() as { registros: Registro[] }
+    if (!registros?.length) return NextResponse.json({ erro: 'Nenhum registro recebido' }, { status: 400 })
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return NextResponse.json({ erro: 'ANTHROPIC_API_KEY não configurada' }, { status: 500 })
-    const client = new Anthropic({ apiKey })
+    let inseridos = 0, atualizados = 0
+    const BATCH = 200
 
-    const buffer = Buffer.from(await arquivo.arrayBuffer())
-    const base64 = buffer.toString('base64')
-
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      tools: [TOOL_SCHEMA],
-      tool_choice: { type: 'any' },
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-          { type: 'text', text: PROMPT },
-        ],
-      }],
-    })
-
-    const toolUse = response.content.find(b => b.type === 'tool_use')
-    if (!toolUse || toolUse.type !== 'tool_use') {
-      return NextResponse.json({ erro: 'Não foi possível extrair fornecedores do PDF' }, { status: 422 })
-    }
-
-    const { fornecedores } = toolUse.input as { fornecedores: { codigo: string; cnpj?: string; nome: string }[] }
-
-    if (!fornecedores?.length) {
-      return NextResponse.json({ erro: 'Nenhum fornecedor encontrado no PDF' }, { status: 422 })
-    }
-
-    // Limpa CNPJ para apenas dígitos
-    function limparCnpj(v?: string) {
-      return (v ?? '').replace(/\D/g, '').padStart(14, '0') || '00000000000000'
-    }
-
-    let inseridos = 0
-    let atualizados = 0
-
-    for (const f of fornecedores) {
-      const cnpj = limparCnpj(f.cnpj)
-      const existing = await prisma.$queryRawUnsafe<{ id: string }[]>(
-        `SELECT id FROM fornecedores_cadastro WHERE cliente_id = $1 AND codigo_erp = $2 LIMIT 1`,
-        clienteId, f.codigo
+    for (let i = 0; i < registros.length; i += BATCH) {
+      const batch = registros.slice(i, i + BATCH)
+      const codigos = batch.map(r => r.codigo)
+      const ph = codigos.map((_, j) => `$${j + 2}`).join(',')
+      const existentes = await prisma.$queryRawUnsafe<{ id: string; codigo_erp: string }[]>(
+        `SELECT id, codigo_erp FROM fornecedores_cadastro WHERE cliente_id = $1 AND codigo_erp IN (${ph})`,
+        clienteId, ...codigos
       )
+      const existMap = new Map(existentes.map(e => [e.codigo_erp, e.id]))
 
-      if (existing.length > 0) {
+      const novos  = batch.filter(r => !existMap.has(r.codigo))
+      const update = batch.filter(r =>  existMap.has(r.codigo))
+
+      if (novos.length > 0) {
+        const vals = novos.map((_, j) => `($${j*5+1},$${j*5+2},$${j*5+3},$${j*5+4},$${j*5+5})`).join(',')
+        const args = novos.flatMap(r => [randomUUID(), clienteId, r.cnpj, r.codigo, r.nome])
         await prisma.$executeRawUnsafe(
-          `UPDATE fornecedores_cadastro SET nome = $1, cnpj = $2 WHERE id = $3`,
-          f.nome, cnpj, existing[0].id
+          `INSERT INTO fornecedores_cadastro (id, cliente_id, cnpj, codigo_erp, nome) VALUES ${vals}`,
+          ...args
+        )
+        inseridos += novos.length
+      }
+      for (const r of update) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE fornecedores_cadastro SET nome=$1, cnpj=$2 WHERE id=$3`,
+          r.nome, r.cnpj, existMap.get(r.codigo)!
         )
         atualizados++
-      } else {
-        await prisma.$executeRawUnsafe(
-          `INSERT INTO fornecedores_cadastro (id, cliente_id, cnpj, codigo_erp, nome) VALUES ($1, $2, $3, $4, $5)`,
-          randomUUID(), clienteId, cnpj, f.codigo, f.nome
-        )
-        inseridos++
       }
     }
 
-    return NextResponse.json({ inseridos, atualizados, total: fornecedores.length })
+    return NextResponse.json({ inseridos, atualizados, total: registros.length })
   } catch (err) {
     console.error('[importar-fornecedores-cadastro]', err)
-    return NextResponse.json({ erro: 'Erro ao processar PDF' }, { status: 500 })
+    return NextResponse.json({ erro: err instanceof Error ? err.message : 'Erro ao importar' }, { status: 500 })
   }
 }

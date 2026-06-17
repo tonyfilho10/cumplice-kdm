@@ -134,40 +134,101 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     onRecarregar()
   }
 
-  async function uploadCadastro(file: File) {
-    setImportCadastro({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
-    const fd = new FormData()
-    fd.append('arquivo', file)
-    try {
-      const res  = await fetch(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, { method: 'POST', body: fd })
-      const data = await res.json()
-      if (data.erro) {
-        setImportCadastro({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
-      } else {
-        setImportCadastro({ loading: false, msg: `${data.inseridos} inseridos · ${data.atualizados} atualizados (total ${data.total})`, ok: true })
-        await carregar()
+  function splitChunks(text: string, size: number): string[] {
+    const chunks: string[] = []
+    let start = 0
+    while (start < text.length) {
+      let end = Math.min(start + size, text.length)
+      if (end < text.length) {
+        const nl = text.lastIndexOf('\n', end)
+        if (nl > start) end = nl + 1
       }
-    } catch {
-      setImportCadastro({ loading: false, msg: 'Erro de conexão', ok: false })
+      chunks.push(text.slice(start, end))
+      start = end
+    }
+    return chunks
+  }
+
+  async function apiJson<T>(url: string, body: unknown): Promise<T> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const text = await res.text()
+    try { return JSON.parse(text) as T }
+    catch { throw new Error(`Resposta inesperada do servidor (HTTP ${res.status})`) }
+  }
+
+  async function uploadCadastro(file: File) {
+    setImportCadastro({ loading: true, msg: 'Lendo PDF...', ok: null })
+    try {
+      // 1. Extrai texto do PDF
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      const { texto, erro: e1 } = await (await fetch(`/api/clientes/${clienteId}/extrair-texto-pdf`, { method: 'POST', body: fd })).json()
+      if (e1) { setImportCadastro({ loading: false, msg: `Erro: ${e1}`, ok: false }); return }
+
+      // 2. Divide em chunks e processa com IA
+      const chunks = splitChunks(texto, 12_000)
+      type Reg = { codigo: string; cnpj: string; nome: string }
+      let registros: Reg[] = []
+      for (let i = 0; i < chunks.length; i++) {
+        setImportCadastro({ loading: true, msg: `Extraindo dados (${i + 1}/${chunks.length})...`, ok: null })
+        const { registros: r, erro: e2 } = await apiJson<{ registros: Reg[]; erro?: string }>(
+          `/api/clientes/${clienteId}/processar-chunk-fornecedores`, { texto: chunks[i] }
+        )
+        if (e2) { setImportCadastro({ loading: false, msg: `Erro: ${e2}`, ok: false }); return }
+        registros = [...registros, ...(r ?? [])]
+      }
+
+      // 3. Salva no banco
+      setImportCadastro({ loading: true, msg: 'Importando para o sistema...', ok: null })
+      const { inseridos, atualizados, total, erro: e3 } = await apiJson<{ inseridos: number; atualizados: number; total: number; erro?: string }>(
+        `/api/clientes/${clienteId}/importar-fornecedores-cadastro`, { registros }
+      )
+      if (e3) { setImportCadastro({ loading: false, msg: `Erro: ${e3}`, ok: false }); return }
+
+      setImportCadastro({ loading: false, msg: `${inseridos} inseridos · ${atualizados} atualizados (total ${total})`, ok: true })
+      await carregar()
+    } catch (err) {
+      setImportCadastro({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
     }
   }
 
   async function uploadContas(file: File) {
-    setImportContas({ loading: true, msg: 'Analisando PDF com IA...', ok: null })
-    const fd = new FormData()
-    fd.append('arquivo', file)
-    fd.append('substituir', String(substituirContas))
+    setImportContas({ loading: true, msg: 'Lendo PDF...', ok: null })
     try {
-      const res  = await fetch(`/api/clientes/${clienteId}/importar-contas-pagar`, { method: 'POST', body: fd })
-      const data = await res.json()
-      if (data.erro) {
-        setImportContas({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
-      } else {
-        setImportContas({ loading: false, msg: `${data.inseridos} inseridas · ${data.ignorados} já existiam (total ${data.total})`, ok: true })
-        await carregar()
+      // 1. Extrai texto do PDF
+      const fd = new FormData()
+      fd.append('arquivo', file)
+      const { texto, erro: e1 } = await (await fetch(`/api/clientes/${clienteId}/extrair-texto-pdf`, { method: 'POST', body: fd })).json()
+      if (e1) { setImportContas({ loading: false, msg: `Erro: ${e1}`, ok: false }); return }
+
+      // 2. Divide em chunks e processa com IA
+      const chunks = splitChunks(texto, 12_000)
+      type Reg = { fornecedor_codigo: string; fornecedor_nome: string; documento: string; vencimento: string | null; valor_parcela: number; valor_pago: number; saldo: number; situacao: string }
+      let registros: Reg[] = []
+      for (let i = 0; i < chunks.length; i++) {
+        setImportContas({ loading: true, msg: `Extraindo dados (${i + 1}/${chunks.length})...`, ok: null })
+        const { registros: r, erro: e2 } = await apiJson<{ registros: Reg[]; erro?: string }>(
+          `/api/clientes/${clienteId}/processar-chunk-contas`, { texto: chunks[i] }
+        )
+        if (e2) { setImportContas({ loading: false, msg: `Erro: ${e2}`, ok: false }); return }
+        registros = [...registros, ...(r ?? [])]
       }
-    } catch {
-      setImportContas({ loading: false, msg: 'Erro de conexão', ok: false })
+
+      // 3. Salva no banco
+      setImportContas({ loading: true, msg: 'Importando para o sistema...', ok: null })
+      const { inseridos, ignorados, total, erro: e3 } = await apiJson<{ inseridos: number; ignorados: number; total: number; erro?: string }>(
+        `/api/clientes/${clienteId}/importar-contas-pagar`, { registros, substituir: substituirContas }
+      )
+      if (e3) { setImportContas({ loading: false, msg: `Erro: ${e3}`, ok: false }); return }
+
+      setImportContas({ loading: false, msg: `${inseridos} inseridas · ${ignorados} já existiam (total ${total})`, ok: true })
+      await carregar()
+    } catch (err) {
+      setImportContas({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
     }
   }
 
