@@ -140,15 +140,17 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     fd.append('arquivo', file)
     try {
       const res  = await fetch(`/api/clientes/${clienteId}/importar-fornecedores-cadastro`, { method: 'POST', body: fd })
-      const data = await res.json()
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try { data = JSON.parse(text) } catch { data = { erro: `Servidor retornou resposta inesperada (HTTP ${res.status})` } }
       if (data.erro) {
         setImportCadastro({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
       } else {
         setImportCadastro({ loading: false, msg: `${data.inseridos} inseridos · ${data.atualizados} atualizados (total ${data.total})`, ok: true })
         await carregar()
       }
-    } catch {
-      setImportCadastro({ loading: false, msg: 'Erro de conexão', ok: false })
+    } catch (err) {
+      setImportCadastro({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
     }
   }
 
@@ -159,15 +161,17 @@ export default function Fornecedores({ clienteId, periodo, refresh, onRecarregar
     fd.append('substituir', String(substituirContas))
     try {
       const res  = await fetch(`/api/clientes/${clienteId}/importar-contas-pagar`, { method: 'POST', body: fd })
-      const data = await res.json()
+      const text = await res.text()
+      let data: Record<string, unknown>
+      try { data = JSON.parse(text) } catch { data = { erro: `Servidor retornou resposta inesperada (HTTP ${res.status})` } }
       if (data.erro) {
         setImportContas({ loading: false, msg: `Erro: ${data.erro}`, ok: false })
       } else {
         setImportContas({ loading: false, msg: `${data.inseridos} inseridas · ${data.ignorados} já existiam (total ${data.total})`, ok: true })
         await carregar()
       }
-    } catch {
-      setImportContas({ loading: false, msg: 'Erro de conexão', ok: false })
+    } catch (err) {
+      setImportContas({ loading: false, msg: `Erro: ${err instanceof Error ? err.message : 'falha na requisição'}`, ok: false })
     }
   }
 
