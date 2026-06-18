@@ -22,12 +22,13 @@ import BuscaLancamentos from '@/components/sections/BuscaLancamentos'
 import XmlParaPdf from '@/components/sections/XmlParaPdf'
 import NotasServico from '@/components/sections/NotasServico'
 import Fornecedores from '@/components/sections/Fornecedores'
-import { RefreshCw, Building2, ArrowRight } from 'lucide-react'
+import Atualizacoes from '@/components/sections/Atualizacoes'
+import { RefreshCw, Building2, ArrowRight, Bell } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 
 export type Section =
   | 'visao-geral' | 'compras' | 'notas' | 'notas-servico' | 'sped' | 'banco'
-  | 'despesas' | 'fornecedores' | 'cruzamento' | 'projecao' | 'config' | 'clientes' | 'usuarios' | 'ferramentas' | 'busca' | 'xml-pdf'
+  | 'despesas' | 'fornecedores' | 'cruzamento' | 'projecao' | 'config' | 'clientes' | 'usuarios' | 'ferramentas' | 'busca' | 'xml-pdf' | 'atualizacoes'
 
 const SECTION_TITLES: Record<Section, [string, string]> = {
   'visao-geral': ['Visão Geral', 'Painel de alertas e KPIs do mês'],
@@ -44,8 +45,9 @@ const SECTION_TITLES: Record<Section, [string, string]> = {
   'clientes':    ['Gerenciar Empresas', 'Criar, editar e desativar clientes'],
   'usuarios':    ['Gerenciar Usuários', 'Criar, editar e remover acessos'],
   'ferramentas': ['Ferramentas', 'Utilitários de manutenção e limpeza de dados'],
-  'busca':       ['Buscar Lançamentos', 'Busca e gestão de compras e notas fiscais'],
-  'xml-pdf':     ['XML → PDF', 'Converte XMLs de NF-e em PDF para análise de produtos e CFOP'],
+  'busca':          ['Buscar Lançamentos', 'Busca e gestão de compras e notas fiscais'],
+  'xml-pdf':        ['XML → PDF', 'Converte XMLs de NF-e em PDF para análise de produtos e CFOP'],
+  'atualizacoes':   ['Atualizações', 'Histórico de novidades, melhorias e correções do sistema'],
 }
 
 // Gera lista de períodos: mês atual + 11 meses anteriores
@@ -76,6 +78,9 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   // Highlight para navegação cruzada (ex: Fornecedores → Banco)
   const [bancoHighlight, setBancoHighlight] = useState<string | undefined>()
+  // Notificações não lidas
+  const [notifCount, setNotifCount] = useState(0)
+  const [usuarioId, setUsuarioId] = useState('')
 
   // Seções que precisam de um cliente ativo
   const SECOES_COM_CLIENTE: Section[] = ['visao-geral','compras','notas','notas-servico','sped','banco','despesas','fornecedores','cruzamento','projecao','config']
@@ -87,15 +92,26 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || !clienteAtivo) return
+      if (!user) return
+      setUsuarioId(user.id)
       supabase.from('usuario_clientes')
         .select('papel').eq('usuario_id', user.id).eq('papel', 'admin').limit(1)
         .then(({ data }) => setIsAdmin((data || []).length > 0))
-      supabase.from('usuario_clientes')
-        .select('papel').eq('usuario_id', user.id).eq('cliente_id', clienteAtivo.id).limit(1)
-        .then(({ data }) => setPapel(data?.[0]?.papel ?? null))
+      if (clienteAtivo) {
+        supabase.from('usuario_clientes')
+          .select('papel').eq('usuario_id', user.id).eq('cliente_id', clienteAtivo.id).limit(1)
+          .then(({ data }) => setPapel(data?.[0]?.papel ?? null))
+      }
     })
   }, [clienteAtivo?.id])
+
+  // Busca contagem de notificações não lidas
+  useEffect(() => {
+    fetch('/api/notificacoes')
+      .then(r => r.json())
+      .then((data: { lida: boolean }[]) => setNotifCount(Array.isArray(data) ? data.filter(n => !n.lida).length : 0))
+      .catch(() => {})
+  }, [secao])
 
   // Sócio/Dono e Standard não têm acesso às abas fiscais/contábeis
   useEffect(() => {
@@ -148,6 +164,18 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
+            <button
+              onClick={() => { setSecao('atualizacoes'); fetch('/api/notificacoes', { method: 'PATCH' }).then(() => setNotifCount(0)) }}
+              className="relative p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="Atualizações do sistema"
+            >
+              <Bell className="h-4 w-4" />
+              {notifCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
+                  {notifCount > 9 ? '9+' : notifCount}
+                </span>
+              )}
+            </button>
             <Button variant="outline" size="sm" onClick={recarregar} disabled={atualizando} className="gap-2 text-xs">
               <RefreshCw className={`h-3.5 w-3.5 ${atualizando ? 'animate-spin' : ''}`} />
               {atualizando ? 'Atualizando...' : 'Atualizar'}
@@ -167,10 +195,11 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
               }}
             />
           )}
-          {secao === 'usuarios'    && <Usuarios {...sectionProps} />}
-          {secao === 'ferramentas' && <Ferramentas {...sectionProps} isAdmin={isAdmin} />}
-          {secao === 'busca'       && <BuscaLancamentos {...sectionProps} />}
-          {secao === 'xml-pdf'     && <XmlParaPdf clienteId={clienteAtivo?.id} />}
+          {secao === 'usuarios'      && <Usuarios {...sectionProps} />}
+          {secao === 'ferramentas'   && <Ferramentas {...sectionProps} isAdmin={isAdmin} />}
+          {secao === 'busca'         && <BuscaLancamentos {...sectionProps} />}
+          {secao === 'xml-pdf'       && <XmlParaPdf clienteId={clienteAtivo?.id} />}
+          {secao === 'atualizacoes'  && <Atualizacoes isAdmin={isAdmin} usuarioId={usuarioId} />}
 
           {/* Seções que precisam de cliente */}
           {precisaCliente && !clienteAtivo && (

@@ -263,6 +263,47 @@ model Threshold {
   @@map("thresholds")
 }
 
+model Atualizacao {
+  id           String    @id @default(uuid())
+  titulo       String
+  descricao    String
+  versao       String?
+  publicada    Boolean   @default(false)
+  publicado_em DateTime?
+  created_at   DateTime  @default(now())
+
+  feedbacks    AtualizacaoFeedback[]
+  notificacoes Notificacao[]
+
+  @@map("atualizacoes")
+}
+
+model AtualizacaoFeedback {
+  id             String   @id @default(uuid())
+  atualizacao_id String
+  usuario_id     String
+  tipo           String   // 'aprovado' | 'sugestao'
+  mensagem       String?
+  created_at     DateTime @default(now())
+
+  atualizacao Atualizacao @relation(fields: [atualizacao_id], references: [id], onDelete: Cascade)
+
+  @@unique([atualizacao_id, usuario_id])
+  @@map("atualizacao_feedbacks")
+}
+
+model Notificacao {
+  id             String   @id @default(uuid())
+  usuario_id     String
+  atualizacao_id String
+  lida           Boolean  @default(false)
+  created_at     DateTime @default(now())
+
+  atualizacao Atualizacao @relation(fields: [atualizacao_id], references: [id], onDelete: Cascade)
+
+  @@map("notificacoes")
+}
+
 model FornecedorCadastro {
   id         String    @id @default(uuid())
   cliente_id String
