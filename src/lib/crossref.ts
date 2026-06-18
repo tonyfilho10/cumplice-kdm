@@ -182,7 +182,8 @@ export function cruzarDados(
   // ========================================
   // 2. CRUZAMENTO: Saídas Banco × NFs de compra no SPED
   // ========================================
-  const saidas = bancosEntrada.filter(b => b.tipo === 'saida' && b.valor > 0)
+  // Exclui saídas já ok (matched por fornecedor, comprovante, etc.)
+  const saidas = bancosEntrada.filter(b => b.tipo === 'saida' && b.valor > 0 && b.status !== 'ok')
 
   const despesasUsadas = new Set<string>()
 

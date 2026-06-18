@@ -109,8 +109,12 @@ export async function conciliarPeriodo(clienteId: string, periodo: string) {
     const temNF = !!b.nota_fiscal_id || !!b.nf_vinculada || saidaComNfIds.has(b.id)
 
     let novoStatus: 'ok' | 'pendente' | 'sem_nf' | 'parcial'
+    const isFornecedor = b.categoria === 'Fornecedor'
     if (isTributo) {
       novoStatus = temComprovante ? 'ok' : 'pendente'
+    } else if (isFornecedor) {
+      // Matched via fornecedores — preserva ok independente de NF/comprovante
+      novoStatus = 'ok'
     } else if (temNF && temComprovante) {
       novoStatus = 'ok'
     } else if (temNF || temComprovante) {
