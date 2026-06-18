@@ -123,7 +123,7 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
   const [dinamicas, setDinamicas] = useState<Atualizacao[]>([])
   const [loading, setLoading]   = useState(true)
   const [toast, setToast]       = useState('')
-  const [expandido, setExpandido]         = useState<string | null>(null)
+  const [expandido, setExpandido]           = useState<string | null>(null)
   const [feedbackAberto, setFeedbackAberto] = useState<string | null>(null)
   const [sugestao, setSugestao] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -151,7 +151,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // Mescla histórico fixo + dinâmico
   const todos = useMemo<Atualizacao[]>(() => {
     const versoesDin = new Set(dinamicas.map(a => a.versao).filter(Boolean))
     const historico  = HISTORICO_INICIAL.filter(h => !versoesDin.has(h.versao))
@@ -159,7 +158,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
       .sort((a, b) => new Date(b.publicado_em ?? b.created_at).getTime() - new Date(a.publicado_em ?? a.created_at).getTime())
   }, [dinamicas])
 
-  // Aplica filtros
   const filtrados = useMemo(() => todos.filter(item => {
     if (catFiltro !== 'todas' && item.categoria !== catFiltro) return false
     const dataRef = new Date(item.publicado_em ?? item.created_at)
@@ -230,7 +228,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
 
       {/* Filtros */}
       <div className="space-y-3 p-4 rounded-xl border border-border bg-card">
-        {/* Categoria chips */}
         <div className="flex flex-wrap gap-2">
           {CATS.map(c => (
             <button
@@ -248,7 +245,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
           ))}
         </div>
 
-        {/* Filtro de data */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-muted-foreground">Período:</span>
           <input
@@ -319,7 +315,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
         </Card>
       )}
 
-      {/* Sem resultados */}
       {filtrados.length === 0 && (
         <div className="text-center py-12 text-muted-foreground text-sm">
           Nenhuma atualização encontrada para os filtros selecionados.
@@ -332,15 +327,16 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
           <div className="absolute left-3.5 top-0 bottom-0 w-px bg-border" />
           <div className="space-y-3">
             {filtrados.map((item, idx) => {
-              const isDin     = dinamicas.some(a => a.id === item.id)
+              const isDin      = dinamicas.some(a => a.id === item.id)
               const isExpanded = expandido === item.id
-              const fb = item.feedbacks?.find(f => f.usuario_id === usuarioId)
+              const fb         = item.feedbacks?.find(f => f.usuario_id === usuarioId)
               const aprovacoes = item.feedbacks?.filter(f => f.tipo === 'aprovado').length ?? 0
               const sugestoes  = item.feedbacks?.filter(f => f.tipo === 'sugestao').length ?? 0
               const isRascunho = isDin && !item.publicada
               const dataExib   = new Date(item.publicado_em ?? item.created_at).toLocaleDateString('pt-BR', {
                 day: '2-digit', month: 'short', year: 'numeric',
               })
+              const podeFeedback = !isAdmin && isDin && item.publicada
 
               return (
                 <div key={item.id} className="relative pl-9">
@@ -350,6 +346,7 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                   )} />
 
                   <Card className={cn('p-4', isRascunho && 'border-yellow-500/40 bg-yellow-500/5')}>
+                    {/* Cabeçalho do card */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -376,6 +373,57 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                       </button>
                     </div>
 
+                    {/* Botões de feedback — visíveis sempre, sem precisar expandir */}
+                    {podeFeedback && (
+                      <div className="mt-3 pt-3 border-t border-border">
+                        {fb ? (
+                          <p className="text-xs text-muted-foreground">
+                            Você {fb.tipo === 'aprovado' ? 'aprovou esta atualização ✓' : 'enviou uma sugestão ✓'}
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm" variant="outline"
+                                className="gap-1.5 text-green-500 border-green-500/30 hover:bg-green-500/10"
+                                onClick={() => enviarFeedback(item.id, 'aprovado')}
+                                disabled={salvando}
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
+                              </Button>
+                              <Button
+                                size="sm" variant="outline"
+                                className="gap-1.5 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                                onClick={() => setFeedbackAberto(feedbackAberto === item.id ? null : item.id)}
+                                disabled={salvando}
+                              >
+                                <MessageSquarePlus className="h-3.5 w-3.5" />Sugerir melhoria
+                              </Button>
+                            </div>
+                            {feedbackAberto === item.id && (
+                              <div className="flex gap-2">
+                                <input
+                                  className="flex-1 bg-background border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                                  placeholder="Descreva sua sugestão..."
+                                  value={sugestao}
+                                  onChange={e => setSugestao(e.target.value)}
+                                  onKeyDown={e => e.key === 'Enter' && enviarFeedback(item.id, 'sugestao')}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => enviarFeedback(item.id, 'sugestao')}
+                                  disabled={salvando || !sugestao.trim()}
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Conteúdo expandido */}
                     {isExpanded && (
                       <div className="mt-3 space-y-3">
                         <div className="text-sm text-muted-foreground whitespace-pre-line leading-relaxed border-t border-border pt-3">
@@ -389,8 +437,8 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                           </Button>
                         )}
 
-                        {/* Stats feedback */}
-                        {isDin && item.publicada && (
+                        {/* Contadores de feedback (admin) */}
+                        {isAdmin && isDin && item.publicada && (
                           <div className="flex items-center gap-4 pt-1 border-t border-border">
                             <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
@@ -400,7 +448,7 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                               <MessageSquarePlus className="h-3.5 w-3.5 text-blue-400" />
                               {sugestoes} sugestão{sugestoes !== 1 ? 'ões' : ''}
                             </span>
-                            {isAdmin && sugestoes > 0 && (
+                            {sugestoes > 0 && (
                               <button
                                 onClick={() => setFeedbackAberto(feedbackAberto === item.id + '_ver' ? null : item.id + '_ver')}
                                 className="text-xs text-primary hover:underline ml-auto flex items-center gap-1"
@@ -411,7 +459,7 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                           </div>
                         )}
 
-                        {/* Sugestões (admin) */}
+                        {/* Lista de sugestões (admin) */}
                         {isAdmin && feedbackAberto === item.id + '_ver' && (
                           <div className="space-y-2 bg-muted/30 rounded-lg p-3">
                             {item.feedbacks.filter(f => f.tipo === 'sugestao' && f.mensagem).map((f, i) => (
@@ -420,47 +468,6 @@ export default function Atualizacoes({ isAdmin, usuarioId }: Props) {
                                 <p className="text-foreground">{f.mensagem}</p>
                               </div>
                             ))}
-                          </div>
-                        )}
-
-                        {/* Feedback (usuário, só em atualizações dinâmicas publicadas) */}
-                        {!isAdmin && isDin && item.publicada && (
-                          <div className="pt-1 border-t border-border">
-                            {fb ? (
-                              <p className="text-xs text-muted-foreground">
-                                Você {fb.tipo === 'aprovado' ? 'aprovou esta atualização ✓' : 'enviou uma sugestão ✓'}
-                              </p>
-                            ) : (
-                              <div className="space-y-2">
-                                <div className="flex gap-2">
-                                  <Button size="sm" variant="outline"
-                                    className="gap-1.5 text-green-500 border-green-500/30 hover:bg-green-500/10"
-                                    onClick={() => enviarFeedback(item.id, 'aprovado')} disabled={salvando}>
-                                    <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
-                                  </Button>
-                                  <Button size="sm" variant="outline"
-                                    className="gap-1.5 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
-                                    onClick={() => setFeedbackAberto(feedbackAberto === item.id ? null : item.id)} disabled={salvando}>
-                                    <MessageSquarePlus className="h-3.5 w-3.5" />Sugerir melhoria
-                                  </Button>
-                                </div>
-                                {feedbackAberto === item.id && (
-                                  <div className="flex gap-2">
-                                    <input
-                                      className="flex-1 bg-background border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                                      placeholder="Descreva sua sugestão..."
-                                      value={sugestao}
-                                      onChange={e => setSugestao(e.target.value)}
-                                      onKeyDown={e => e.key === 'Enter' && enviarFeedback(item.id, 'sugestao')}
-                                    />
-                                    <Button size="sm" onClick={() => enviarFeedback(item.id, 'sugestao')}
-                                      disabled={salvando || !sugestao.trim()}>
-                                      <Send className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
