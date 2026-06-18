@@ -300,6 +300,7 @@ model AtualizacaoFeedback {
   usuario_id     String
   tipo           String   // 'aprovado' | 'sugestao'
   mensagem       String?
+  nome_usuario   String   @default("")
   status_sugestao String  @default("nao_lida") // 'nao_lida' | 'em_andamento' | 'resolvida'
   created_at     DateTime @default(now())
 

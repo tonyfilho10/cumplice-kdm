@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { CheckCircle2, MessageSquarePlus, Bell, Plus, Send, ChevronDown, ChevronUp, Pencil, X, Clock, Check, Eye } from 'lucide-react'
+import { CheckCircle2, MessageSquarePlus, Bell, Plus, Send, ChevronDown, ChevronUp, Pencil, X, Clock, Check, Eye, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, Toast } from '@/components/ui'
 import { Button } from '@/components/ui/button'
@@ -11,7 +11,7 @@ type StatusSugestao = 'nao_lida' | 'em_andamento' | 'resolvida'
 
 type Feedback = {
   id: string; tipo: string; usuario_id: string
-  mensagem?: string | null; status_sugestao: StatusSugestao; created_at: string
+  mensagem?: string | null; nome_usuario: string; status_sugestao: StatusSugestao; created_at: string
 }
 type Edicao = {
   id: string; titulo_antes: string; descricao_antes: string
@@ -159,10 +159,14 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
   const [novaVersao, setNovaVersao] = useState('')
   const [novaCat, setNovaCat]       = useState<Categoria>('nova-feature')
 
-  // Edição
+  // Edição de atualização
   const [editando, setEditando]       = useState<string | null>(null)
   const [editTitulo, setEditTitulo]   = useState('')
   const [editDesc, setEditDesc]       = useState('')
+
+  // Edição de sugestão
+  const [editandoSugestao, setEditandoSugestao] = useState<string | null>(null)
+  const [editSugestaoTexto, setEditSugestaoTexto] = useState('')
 
   const carregar = useCallback(async () => {
     try {
@@ -255,6 +259,27 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
     })
     setSalvando(false)
     await carregar()
+  }
+
+  async function editarSugestao(atualizacaoId: string, feedbackId: string) {
+    if (!editSugestaoTexto.trim()) return
+    setSalvando(true)
+    await fetch(`/api/atualizacoes/${atualizacaoId}/feedback/${feedbackId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mensagem: editSugestaoTexto }),
+    })
+    setSalvando(false); setEditandoSugestao(null)
+    await carregar()
+    setToast('Sugestão atualizada.')
+  }
+
+  async function deletarSugestao(atualizacaoId: string, feedbackId: string) {
+    setSalvando(true)
+    await fetch(`/api/atualizacoes/${atualizacaoId}/feedback/${feedbackId}`, { method: 'DELETE' })
+    setSalvando(false)
+    await carregar()
+    setToast('Sugestão removida.')
   }
 
   if (loading) return <div className="text-muted-foreground text-sm p-6">Carregando...</div>
@@ -463,6 +488,87 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
                       </div>
                     )}
 
+                    {/* Sugestões — visível sem expandir */}
+                    {isDin && item.publicada && sugestoes.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-border space-y-2">
+                        <p className="text-xs font-semibold text-foreground">Sugestões</p>
+                        {sugestoes.map(f => {
+                          const st = STATUS_CONFIG[f.status_sugestao]
+                          const Icon = st.icon
+                          const isDono = f.usuario_id === usuarioId
+                          const estaEditandoEsta = editandoSugestao === f.id
+                          return (
+                            <div key={f.id} className="bg-muted/30 rounded-lg p-3 border border-border space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-medium text-foreground">
+                                  {f.nome_usuario || 'Usuário'}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  {isDono && !estaEditandoEsta && (
+                                    <>
+                                      <button
+                                        onClick={() => { setEditandoSugestao(f.id); setEditSugestaoTexto(f.mensagem ?? '') }}
+                                        className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+                                        title="Editar sugestão"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => deletarSugestao(item.id, f.id)}
+                                        disabled={salvando}
+                                        className="p-1 text-muted-foreground hover:text-rose-400 transition-colors"
+                                        title="Excluir sugestão"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              {estaEditandoEsta ? (
+                                <div className="flex gap-2">
+                                  <input
+                                    className="flex-1 bg-background border border-border rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                                    value={editSugestaoTexto}
+                                    onChange={e => setEditSugestaoTexto(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && editarSugestao(item.id, f.id)}
+                                    autoFocus
+                                  />
+                                  <button onClick={() => editarSugestao(item.id, f.id)} disabled={salvando || !editSugestaoTexto.trim()} className="p-1 text-primary hover:opacity-80 transition-opacity">
+                                    <Send className="h-3 w-3" />
+                                  </button>
+                                  <button onClick={() => setEditandoSugestao(null)} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-foreground">{f.mensagem}</p>
+                              )}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs text-muted-foreground/60">{fmtData(f.created_at)}</span>
+                                <span className={cn('inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5', st.cls)}>
+                                  <Icon className="h-3 w-3" />{st.label}
+                                </span>
+                                {isDesenvolvedor && (['nao_lida', 'em_andamento', 'resolvida'] as StatusSugestao[])
+                                  .filter(s => s !== f.status_sugestao)
+                                  .map(s => {
+                                    const sc = STATUS_CONFIG[s]
+                                    const Ic = sc.icon
+                                    return (
+                                      <button key={s} onClick={() => atualizarStatusSugestao(item.id, f.id, s)} disabled={salvando}
+                                        className={cn('inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 transition-colors hover:opacity-80', sc.cls)}>
+                                        <Ic className="h-3 w-3" />{sc.label}
+                                      </button>
+                                    )
+                                  })
+                                }
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+
                     {/* Conteúdo expandido */}
                     {isExpanded && (
                       <div className="mt-3 space-y-3 border-t border-border pt-3">
@@ -518,46 +624,6 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
                           </Button>
                         )}
 
-                        {/* Sugestões (desenvolvedor) */}
-                        {isDesenvolvedor && isDin && item.publicada && sugestoes.length > 0 && (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold text-foreground">Sugestões de usuários</p>
-                            {sugestoes.map(f => {
-                              const st = STATUS_CONFIG[f.status_sugestao]
-                              const Icon = st.icon
-                              return (
-                                <div key={f.id} className="bg-muted/30 rounded-lg p-3 border border-border space-y-2">
-                                  <p className="text-xs text-foreground">{f.mensagem}</p>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-xs text-muted-foreground/60">
-                                      {fmtData(f.created_at)}
-                                    </span>
-                                    <span className={cn('inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5', st.cls)}>
-                                      <Icon className="h-3 w-3" />{st.label}
-                                    </span>
-                                    {/* Botões de status */}
-                                    {(['nao_lida', 'em_andamento', 'resolvida'] as StatusSugestao[])
-                                      .filter(s => s !== f.status_sugestao)
-                                      .map(s => {
-                                        const sc = STATUS_CONFIG[s]
-                                        const Ic = sc.icon
-                                        return (
-                                          <button key={s}
-                                            onClick={() => atualizarStatusSugestao(item.id, f.id, s)}
-                                            disabled={salvando}
-                                            className={cn('inline-flex items-center gap-1 text-xs border rounded-full px-2 py-0.5 transition-colors hover:opacity-80', sc.cls)}
-                                          >
-                                            <Ic className="h-3 w-3" />{sc.label}
-                                          </button>
-                                        )
-                                      })
-                                    }
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
                       </div>
                     )}
                   </Card>

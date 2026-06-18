@@ -9,8 +9,9 @@ export async function GET() {
       feedbacks: {
         select: {
           id: true, tipo: true, usuario_id: true,
-          mensagem: true, status_sugestao: true, created_at: true,
+          mensagem: true, nome_usuario: true, status_sugestao: true, created_at: true,
         },
+        orderBy: { created_at: 'asc' },
       },
       edicoes: {
         orderBy: { created_at: 'desc' },

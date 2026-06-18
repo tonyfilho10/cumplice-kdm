@@ -17,16 +17,21 @@ export async function POST(
     return NextResponse.json({ erro: 'Tipo inválido' }, { status: 400 })
   }
 
+  const nome_usuario = (user.user_metadata?.full_name as string)
+    || (user.user_metadata?.name as string)
+    || user.email?.split('@')[0]
+    || 'Usuário'
+
   const fb = await prisma.atualizacaoFeedback.upsert({
     where: { atualizacao_id_usuario_id: { atualizacao_id: id, usuario_id: user.id } },
-    create: { atualizacao_id: id, usuario_id: user.id, tipo, mensagem: mensagem ?? null },
-    update: { tipo, mensagem: mensagem ?? null },
+    create: { atualizacao_id: id, usuario_id: user.id, tipo, mensagem: mensagem ?? null, nome_usuario },
+    update: { tipo, mensagem: mensagem ?? null, nome_usuario },
   })
 
   return NextResponse.json(fb)
 }
 
-// PATCH — desenvolvedor atualiza status de uma sugestão
+// PATCH — desenvolvedor muda status de sugestão
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -41,17 +46,12 @@ export async function PATCH(
   if (!rows?.length) return NextResponse.json({ erro: 'Sem permissão' }, { status: 403 })
 
   const { feedback_id, status_sugestao } = await request.json() as {
-    feedback_id: string
-    status_sugestao: 'nao_lida' | 'em_andamento' | 'resolvida'
+    feedback_id: string; status_sugestao: 'nao_lida' | 'em_andamento' | 'resolvida'
   }
   if (!['nao_lida', 'em_andamento', 'resolvida'].includes(status_sugestao)) {
     return NextResponse.json({ erro: 'Status inválido' }, { status: 400 })
   }
 
-  await prisma.atualizacaoFeedback.update({
-    where: { id: feedback_id },
-    data: { status_sugestao },
-  })
-
+  await prisma.atualizacaoFeedback.update({ where: { id: feedback_id }, data: { status_sugestao } })
   return NextResponse.json({ ok: true })
 }
