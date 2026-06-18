@@ -355,7 +355,8 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
               const fb         = item.feedbacks?.find(f => f.usuario_id === usuarioId)
               const aprovacoes = item.feedbacks?.filter(f => f.tipo === 'aprovado').length ?? 0
               const sugestoes  = item.feedbacks?.filter(f => f.tipo === 'sugestao') ?? []
-              const podeFeedback = !isDesenvolvedor && isDin && item.publicada
+              const podeAprovar  = !isDesenvolvedor && isDin && item.publicada
+              const podeSugerir  = isDin && item.publicada
               const estaEditando = editando === item.id
 
               return (
@@ -420,8 +421,8 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
                       </div>
                     </div>
 
-                    {/* Botões de feedback — visíveis sem expandir (não-desenvolvedor) */}
-                    {podeFeedback && (
+                    {/* Botões de feedback — visíveis sem expandir */}
+                    {podeSugerir && (
                       <div className="mt-3 pt-3 border-t border-border">
                         {fb ? (
                           <p className="text-xs text-muted-foreground">
@@ -430,11 +431,13 @@ export default function Atualizacoes({ isAdmin, isDesenvolvedor, usuarioId }: Pr
                         ) : (
                           <div className="space-y-2">
                             <div className="flex gap-2">
-                              <Button size="sm" variant="outline"
-                                className="gap-1.5 text-green-500 border-green-500/30 hover:bg-green-500/10"
-                                onClick={() => enviarFeedback(item.id, 'aprovado')} disabled={salvando}>
-                                <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
-                              </Button>
+                              {podeAprovar && (
+                                <Button size="sm" variant="outline"
+                                  className="gap-1.5 text-green-500 border-green-500/30 hover:bg-green-500/10"
+                                  onClick={() => enviarFeedback(item.id, 'aprovado')} disabled={salvando}>
+                                  <CheckCircle2 className="h-3.5 w-3.5" />Aprovar
+                                </Button>
+                              )}
                               <Button size="sm" variant="outline"
                                 className="gap-1.5 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
                                 onClick={() => setFeedbackAberto(feedbackAberto === item.id ? null : item.id)} disabled={salvando}>
