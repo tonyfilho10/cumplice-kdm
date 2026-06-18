@@ -268,14 +268,30 @@ model Atualizacao {
   titulo       String
   descricao    String
   versao       String?
+  categoria    String    @default("nova-feature") // nova-feature | ui | banco-de-dados | correcao
   publicada    Boolean   @default(false)
   publicado_em DateTime?
+  editado_em   DateTime?
   created_at   DateTime  @default(now())
 
   feedbacks    AtualizacaoFeedback[]
   notificacoes Notificacao[]
+  edicoes      AtualizacaoEdicao[]
 
   @@map("atualizacoes")
+}
+
+model AtualizacaoEdicao {
+  id              String   @id @default(uuid())
+  atualizacao_id  String
+  titulo_antes    String
+  descricao_antes String
+  editado_por     String
+  created_at      DateTime @default(now())
+
+  atualizacao Atualizacao @relation(fields: [atualizacao_id], references: [id], onDelete: Cascade)
+
+  @@map("atualizacao_edicoes")
 }
 
 model AtualizacaoFeedback {
@@ -284,6 +300,7 @@ model AtualizacaoFeedback {
   usuario_id     String
   tipo           String   // 'aprovado' | 'sugestao'
   mensagem       String?
+  status_sugestao String  @default("nao_lida") // 'nao_lida' | 'em_andamento' | 'resolvida'
   created_at     DateTime @default(now())
 
   atualizacao Atualizacao @relation(fields: [atualizacao_id], references: [id], onDelete: Cascade)

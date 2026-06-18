@@ -88,6 +88,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
 
   const supabase = createClient()
   const [isAdmin, setIsAdmin] = useState(false)
+  const [isDesenvolvedor, setIsDesenvolvedor] = useState(false)
   const [papel, setPapel] = useState<string | null>(null)
 
   useEffect(() => {
@@ -95,8 +96,12 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
       if (!user) return
       setUsuarioId(user.id)
       supabase.from('usuario_clientes')
-        .select('papel').eq('usuario_id', user.id).eq('papel', 'admin').limit(1)
-        .then(({ data }) => setIsAdmin((data || []).length > 0))
+        .select('papel').eq('usuario_id', user.id).in('papel', ['admin', 'desenvolvedor']).limit(10)
+        .then(({ data }) => {
+          const papeis = (data || []).map((r: { papel: string }) => r.papel)
+          setIsAdmin(papeis.includes('admin') || papeis.includes('desenvolvedor'))
+          setIsDesenvolvedor(papeis.includes('desenvolvedor'))
+        })
       if (clienteAtivo) {
         supabase.from('usuario_clientes')
           .select('papel').eq('usuario_id', user.id).eq('cliente_id', clienteAtivo.id).limit(1)
@@ -199,7 +204,7 @@ export default function DashboardClient({ clientes }: { clientes: Cliente[] }) {
           {secao === 'ferramentas'   && <Ferramentas {...sectionProps} isAdmin={isAdmin} />}
           {secao === 'busca'         && <BuscaLancamentos {...sectionProps} />}
           {secao === 'xml-pdf'       && <XmlParaPdf clienteId={clienteAtivo?.id} />}
-          {secao === 'atualizacoes'  && <Atualizacoes isAdmin={isAdmin} usuarioId={usuarioId} />}
+          {secao === 'atualizacoes'  && <Atualizacoes isAdmin={isAdmin} isDesenvolvedor={isDesenvolvedor} usuarioId={usuarioId} />}
 
           {/* Seções que precisam de cliente */}
           {precisaCliente && !clienteAtivo && (
