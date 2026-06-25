@@ -3,7 +3,10 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { DocumentoSped } from '@/lib/supabase/types'
-import { Card, CardTitle, Table, Td, Toast, Tr, UploadZone, brl, fmtData } from '@/components/ui'
+import {
+  Btn, Card, CardTitle, ConfirmDelete, Input, Modal, RowActions, Select,
+  Table, Td, Toast, Tr, UploadZone, brl, fmtData,
+} from '@/components/ui'
 
 type Props = { clienteId: string; periodo: string; refresh: number; onRecarregar: () => void }
 
@@ -41,6 +44,13 @@ export default function Sped({ clienteId, periodo, refresh, onRecarregar }: Prop
   const [toast, setToast] = useState('')
   const [importando, setImportando] = useState(false)
   const [busca, setBusca] = useState('')
+  const [filtroDataIni, setFiltroDataIni] = useState('')
+  const [filtroDataFim, setFiltroDataFim] = useState('')
+  const [filtroTipo, setFiltroTipo] = useState('')
+  const [filtroCfop, setFiltroCfop] = useState('')
+  const [filtroClassificacao, setFiltroClassificacao] = useState('')
+  const [editando, setEditando] = useState<DocumentoSped | null>(null)
+  const [excluindo, setExcluindo] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     const { data: rows } = await supabase.from('documentos_sped').select('*')
@@ -110,13 +120,60 @@ export default function Sped({ clienteId, periodo, refresh, onRecarregar }: Prop
     return [...mapa.entries()].sort((a, b) => b[1].valor - a[1].valor)
   })()
 
-  const visiveis = busca.trim()
-    ? documentos.filter(d =>
-        (d.numero || '').toLowerCase().includes(busca.toLowerCase()) ||
-        (d.participante_nome || '').toLowerCase().includes(busca.toLowerCase()) ||
-        (d.cfop || '').toLowerCase().includes(busca.toLowerCase())
-      )
-    : documentos
+  const visiveis = documentos.filter(d => {
+    if (busca.trim()) {
+      const b = busca.toLowerCase()
+      const bate =
+        (d.numero || '').toLowerCase().includes(b) ||
+        (d.participante_nome || '').toLowerCase().includes(b) ||
+        (d.cfop || '').toLowerCase().includes(b)
+      if (!bate) return false
+    }
+    if (filtroDataIni && d.data_emissao < filtroDataIni) return false
+    if (filtroDataFim && d.data_emissao > filtroDataFim) return false
+    if (filtroTipo && d.tipo !== filtroTipo) return false
+    if (filtroCfop && d.cfop !== filtroCfop) return false
+    if (filtroClassificacao && d.classificacao !== filtroClassificacao) return false
+    return true
+  })
+
+  const cfopsDisponiveis = [...new Set(documentos.map(d => d.cfop))].sort()
+  const classificacoesDisponiveis = [...new Set(documentos.map(d => d.classificacao))].sort()
+
+  function limparFiltros() {
+    setBusca(''); setFiltroDataIni(''); setFiltroDataFim('')
+    setFiltroTipo(''); setFiltroCfop(''); setFiltroClassificacao('')
+  }
+
+  async function salvarEdicao() {
+    if (!editando) return
+    const { error } = await supabase.from('documentos_sped').update({
+      data_emissao: editando.data_emissao,
+      data_entrada_saida: editando.data_entrada_saida || null,
+      tipo: editando.tipo,
+      emissao: editando.emissao,
+      cod_participante: editando.cod_participante || null,
+      participante_nome: editando.participante_nome || null,
+      cnpj_participante: editando.cnpj_participante || null,
+      modelo: editando.modelo || null,
+      serie: editando.serie || null,
+      numero: editando.numero,
+      chave_nfe: editando.chave_nfe || null,
+      valor_total: editando.valor_total,
+      cfop: editando.cfop,
+      classificacao: editando.classificacao,
+      cancelado: editando.cancelado,
+    }).eq('id', editando.id)
+    if (error) { setToast(`Erro: ${error.message}`); return }
+    setEditando(null); await carregar(); onRecarregar(); setToast('Documento SPED atualizado!')
+  }
+
+  async function confirmarExclusao() {
+    if (!excluindo) return
+    const { error } = await supabase.from('documentos_sped').delete().eq('id', excluindo)
+    if (error) { setToast(`Erro: ${error.message}`); setExcluindo(null); return }
+    setExcluindo(null); await carregar(); onRecarregar(); setToast('Documento SPED excluído!')
+  }
 
   return (
     <div>
@@ -191,7 +248,33 @@ export default function Sped({ clienteId, periodo, refresh, onRecarregar }: Prop
           <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por número, participante ou CFOP..."
             className="w-full h-8 rounded-md border border-border bg-secondary text-foreground text-xs pl-8 pr-3 focus:outline-none focus:ring-1 focus:ring-ring" />
         </div>
-        <Table headers={['Emissão', 'Tipo', 'Participante', 'CFOP', 'Classificação', 'Nº Doc', 'Valor']}>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-3">
+          <input type="date" value={filtroDataIni} onChange={e => setFiltroDataIni(e.target.value)}
+            className="h-8 rounded-md border border-border bg-secondary text-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring" />
+          <input type="date" value={filtroDataFim} onChange={e => setFiltroDataFim(e.target.value)}
+            className="h-8 rounded-md border border-border bg-secondary text-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring" />
+          <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+            className="h-8 rounded-md border border-border bg-secondary text-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer">
+            <option value="">Tipo (todos)</option>
+            <option value="entrada">Entrada</option>
+            <option value="saida">Saída</option>
+          </select>
+          <select value={filtroCfop} onChange={e => setFiltroCfop(e.target.value)}
+            className="h-8 rounded-md border border-border bg-secondary text-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer">
+            <option value="">CFOP (todos)</option>
+            {cfopsDisponiveis.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={filtroClassificacao} onChange={e => setFiltroClassificacao(e.target.value)}
+            className="h-8 rounded-md border border-border bg-secondary text-foreground text-xs px-2 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer">
+            <option value="">Classificação (todas)</option>
+            {classificacoesDisponiveis.map(c => <option key={c} value={c}>{CLASSIFICACAO_LABEL[c] || c}</option>)}
+          </select>
+          <button onClick={limparFiltros}
+            className="h-8 text-xs text-muted-foreground border border-border rounded-md hover:bg-secondary transition-colors">
+            Limpar filtros
+          </button>
+        </div>
+        <Table headers={['Emissão', 'Tipo', 'Participante', 'CFOP', 'Classificação', 'Nº Doc', 'Valor', '']}>
           {visiveis.map(d => (
             <Tr key={d.id}>
               <Td>{fmtData(d.data_emissao)}</Td>
@@ -209,6 +292,7 @@ export default function Sped({ clienteId, periodo, refresh, onRecarregar }: Prop
               </Td>
               <Td mono>{d.numero}</Td>
               <Td>{brl(d.valor_total)}</Td>
+              <Td><RowActions onEdit={() => setEditando({ ...d })} onDelete={() => setExcluindo(d.id)} /></Td>
             </Tr>
           ))}
         </Table>
@@ -218,6 +302,70 @@ export default function Sped({ clienteId, periodo, refresh, onRecarregar }: Prop
           </div>
         )}
       </Card>
+
+      {editando && (
+        <Modal title="Editar Documento SPED" onClose={() => setEditando(null)}>
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            <Input label="Data de Emissão" type="date" value={editando.data_emissao}
+              onChange={e => setEditando({ ...editando, data_emissao: e.target.value })} />
+            <Input label="Data Entrada/Saída" type="date" value={editando.data_entrada_saida || ''}
+              onChange={e => setEditando({ ...editando, data_entrada_saida: e.target.value || null })} />
+            <Select label="Tipo" value={editando.tipo}
+              onChange={e => setEditando({ ...editando, tipo: e.target.value as DocumentoSped['tipo'] })}>
+              <option value="entrada">Entrada</option>
+              <option value="saida">Saída</option>
+            </Select>
+            <Select label="Emissão" value={editando.emissao}
+              onChange={e => setEditando({ ...editando, emissao: e.target.value as DocumentoSped['emissao'] })}>
+              <option value="propria">Própria</option>
+              <option value="terceiros">Terceiros</option>
+            </Select>
+            <Input label="Participante" value={editando.participante_nome || ''}
+              onChange={e => setEditando({ ...editando, participante_nome: e.target.value || null })} />
+            <Input label="CNPJ Participante" value={editando.cnpj_participante || ''}
+              onChange={e => setEditando({ ...editando, cnpj_participante: e.target.value || null })} />
+            <Input label="Código Participante" value={editando.cod_participante || ''}
+              onChange={e => setEditando({ ...editando, cod_participante: e.target.value || null })} />
+            <Input label="Modelo" value={editando.modelo || ''}
+              onChange={e => setEditando({ ...editando, modelo: e.target.value || null })} />
+            <Input label="Série" value={editando.serie || ''}
+              onChange={e => setEditando({ ...editando, serie: e.target.value || null })} />
+            <Input label="Número" value={editando.numero}
+              onChange={e => setEditando({ ...editando, numero: e.target.value })} />
+            <Input label="Chave NF-e" value={editando.chave_nfe || ''}
+              onChange={e => setEditando({ ...editando, chave_nfe: e.target.value || null })} />
+            <Input label="CFOP" value={editando.cfop}
+              onChange={e => setEditando({ ...editando, cfop: e.target.value })} />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Classificação</label>
+              <select
+                value={editando.classificacao}
+                onChange={e => setEditando({ ...editando, classificacao: e.target.value })}
+                className="h-9 rounded-md border border-border bg-secondary text-foreground text-sm px-3 focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              >
+                {Object.entries(CLASSIFICACAO_LABEL).map(([valor, label]) => (
+                  <option key={valor} value={valor}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <Input label="Valor Total (R$)" type="number" value={String(editando.valor_total)}
+              onChange={e => setEditando({ ...editando, valor_total: parseFloat(e.target.value) || 0 })} />
+            <Select label="Cancelado?" value={editando.cancelado ? 'sim' : 'nao'}
+              onChange={e => setEditando({ ...editando, cancelado: e.target.value === 'sim' })}>
+              <option value="nao">Não</option>
+              <option value="sim">Sim</option>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 mt-5">
+            <Btn variant="ghost" onClick={() => setEditando(null)}>Cancelar</Btn>
+            <Btn onClick={salvarEdicao}>Salvar</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {excluindo && (
+        <ConfirmDelete onConfirm={confirmarExclusao} onCancel={() => setExcluindo(null)} />
+      )}
 
       {toast && <Toast msg={toast} onHide={() => setToast('')} />}
     </div>
